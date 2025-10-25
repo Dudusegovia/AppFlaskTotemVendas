@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agora ou Viagem?</title>
+  <style>
+    /* --- Configuração Geral --- */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #fff0f5;
+      position: relative;
+    }
+
+    /* Partículas de fundo */
+    .background-animation {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    .particle {
+      position: absolute;
+      background: rgba(217, 0, 108, 0.15);
+      border-radius: 50%;
+      animation: float 20s infinite ease-in-out;
+    }
+
+    @keyframes float {
+      0%, 100% {
+        transform: translateY(0) translateX(0) scale(1);
+        opacity: 0.3;
+      }
+      50% {
+        transform: translateY(-80px) translateX(40px) scale(1.3);
+        opacity: 0.5;
+      }
+    }
+
+    /* --- Container Principal --- */
+    .container {
+      text-align: center;
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      box-sizing: border-box;
+      position: relative;
+      z-index: 2;
+    }
+
+    /* --- Título --- */
+    h1 {
+      color: #d9006c;
+      margin-bottom: 40px;
+      font-size: 2.5rem;
+      font-weight: bold;
+      text-shadow: 0 4px 15px rgba(217, 0, 108, 0.3);
+      animation: slideDown 0.8s ease-out, glow 2s ease-in-out infinite;
+      letter-spacing: 1px;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes glow {
+      0%, 100% {
+        text-shadow: 0 4px 15px rgba(217, 0, 108, 0.3);
+      }
+      50% {
+        text-shadow: 0 4px 25px rgba(217, 0, 108, 0.5),
+                     0 0 40px rgba(217, 0, 108, 0.3);
+      }
+    }
+
+    /* --- Container para os Botões --- */
+    .opcoes {
+      display: flex;
+      flex-direction: column;
+      gap: 30px;
+      align-items: center;
+      width: 100%;
+      max-width: 900px;
+      animation: fadeIn 1s ease-out 0.3s both;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: scale(0.9);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    /* --- Estilo do Link --- */
+    .btn-link {
+      text-decoration: none;
+      display: block;
+      width: 100%;
+      max-width: 450px;
+      position: relative;
+    }
+
+    /* --- Estilo do Botão --- */
+    .btn {
+      width: 100%;
+      height: auto;
+      aspect-ratio: 1.618 / 1;
+      background-color: transparent;
+      border: none;
+      border-radius: 20px;
+      padding: 0;
+      cursor: pointer;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Brilho ao redor do botão */
+    .btn::before {
+      content: '';
+      position: absolute;
+      top: -3px;
+      left: -3px;
+      right: -3px;
+      bottom: -3px;
+      background: linear-gradient(45deg, #d9006c, #ff4081, #d9006c, #c2185b);
+      border-radius: 20px;
+      z-index: -1;
+      opacity: 0;
+      filter: blur(15px);
+      transition: opacity 0.4s ease;
+    }
+
+    .btn-link:hover .btn::before {
+      opacity: 0.7;
+      animation: rotateBorder 3s linear infinite;
+    }
+
+    @keyframes rotateBorder {
+      0% { filter: blur(15px) hue-rotate(0deg); }
+      100% { filter: blur(15px) hue-rotate(360deg); }
+    }
+
+    .btn-link:hover .btn {
+      transform: translateY(-10px) scale(1.05);
+      box-shadow: 0 15px 50px rgba(217, 0, 108, 0.3);
+    }
+
+    .btn-link:active .btn {
+      transform: translateY(-5px) scale(1.02);
+    }
+
+    .btn img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.4s ease;
+    }
+
+    .btn-link:hover .btn img {
+      transform: scale(1.05);
+    }
+
+    /* --- Timer de Inatividade --- */
+    #timer-inatividade {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background-color: rgba(255, 255, 255, 0.95);
+      padding: 15px 20px;
+      border-radius: 12px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: #d9006c;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      z-index: 1000;
+      backdrop-filter: blur(10px);
+    }
+
+    #timer-inatividade.show {
+      opacity: 1;
+      animation: slideInRight 0.4s ease-out;
+    }
+
+    @keyframes slideInRight {
+      from {
+        transform: translateX(100px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    #timer-inatividade.warning {
+      background-color: rgba(255, 193, 7, 0.95);
+      animation: pulse 1s infinite;
+    }
+
+    #timer-inatividade.critical {
+      background-color: rgba(220, 53, 69, 0.95);
+      color: white;
+      animation: shake 0.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      75% { transform: translateX(5px); }
+    }
+
+    /* --- Media Query para Telas Maiores --- */
+    @media (min-width: 768px) {
+      h1 {
+        font-size: 3rem;
+        margin-bottom: 50px;
+      }
+
+      .opcoes {
+        flex-direction: row;
+        justify-content: center;
+        gap: 40px;
+      }
+
+      .btn-link {
+        width: 400px;
+      }
+    }
+
+    /* Ajuste para telas pequenas */
+    @media (max-width: 480px) {
+      h1 {
+        font-size: 1.8rem;
+        margin-bottom: 30px;
+      }
+
+      .opcoes {
+        gap: 20px;
+      }
+
+      .btn {
+        border-radius: 15px;
+      }
+
+      #timer-inatividade {
+        top: 10px;
+        right: 10px;
+        padding: 12px 16px;
+        font-size: 1rem;
+      }
+    }
+
+    /* Ajuste para telas muito pequenas em altura */
+    @media (max-height: 600px) {
+      h1 {
+        font-size: 1.5rem;
+        margin-bottom: 20px;
+      }
+
+      .opcoes {
+        gap: 15px;
+      }
+
+      .container {
+        padding: 15px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Animação de fundo -->
+  <div class="background-animation" id="particles"></div>
+
+  <!-- Timer de Inatividade -->
+  <div id="timer-inatividade">
+    ⏱️ Voltando ao início em <span id="timer-segundos">30</span>s
+  </div>
+
+  <main class="container">
+    <h1>O seu pedido é para...</h1>
+
+    <div class="opcoes">
+      <a href="totem.html" class="btn-link" onclick="salvarTipoPedido('agora')">
+        <button class="btn">
+          <img src="assets/comer_agora.png" alt="Opção Comer Agora">
+        </button>
+      </a>
+
+      <a href="totem.html" class="btn-link" onclick="salvarTipoPedido('viagem')">
+        <button class="btn">
+          <img src="assets/levar.png" alt="Opção Para Levar">
+        </button>
+      </a>
+    </div>
+  </main>
+
+  <script>
+    // Cria partículas flutuantes
+    const particlesContainer = document.getElementById('particles');
+    const particleCount = 12;
+
+    for (let i = 0; i < particleCount; i++) {
+      const particle = document.createElement('div');
+      particle.className = 'particle';
+      
+      const size = Math.random() * 50 + 20;
+      particle.style.width = `${size}px`;
+      particle.style.height = `${size}px`;
+      particle.style.left = `${Math.random() * 100}%`;
+      particle.style.top = `${Math.random() * 100}%`;
+      particle.style.animationDelay = `${Math.random() * 20}s`;
+      particle.style.animationDuration = `${Math.random() * 10 + 15}s`;
+      
+      particlesContainer.appendChild(particle);
+    }
+
+    // ==================== CONFIGURAÇÕES ====================
+    let TIMEOUT_TOTAL = 30;
+    let MOSTRAR_TIMER_APOS = 30;
+    
+    let timeoutInatividade;
+    let intervaloTimer;
+    let segundosRestantes;
+
+    const timerElement = document.getElementById('timer-inatividade');
+    const timerSegundosElement = document.getElementById('timer-segundos');
+
+    // ==================== CARREGAR CONFIGURAÇÕES DA API ====================
+    
+    async function carregarConfiguracoes() {
+      try {
+        const response = await fetch('/api/config');
+        if (response.ok) {
+          const configs = await response.json();
+          
+          TIMEOUT_TOTAL = parseInt(configs.timeout_pagina2?.valor || 30);
+          MOSTRAR_TIMER_APOS = parseInt(configs.mostrar_timer_apos?.valor || 30);
+          
+          console.log(`⏱️ Timeout configurado: ${TIMEOUT_TOTAL}s | Mostrar timer quando faltar: ${MOSTRAR_TIMER_APOS}s`);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar configurações, usando padrão:', error);
+      }
+      
+      iniciarTimeout();
+    }
+
+    // ==================== FUNÇÕES DE TIMEOUT ====================
+    
+    function iniciarTimeout() {
+      segundosRestantes = TIMEOUT_TOTAL;
+      
+      clearTimeout(timeoutInatividade);
+      clearInterval(intervaloTimer);
+      
+      timeoutInatividade = setTimeout(() => {
+        voltarParaInicio();
+      }, TIMEOUT_TOTAL * 1000);
+      
+      intervaloTimer = setInterval(() => {
+        segundosRestantes--;
+        
+        const tempoRestante = TIMEOUT_TOTAL - Math.floor((TIMEOUT_TOTAL - segundosRestantes));
+        const mostrarTimer = tempoRestante <= MOSTRAR_TIMER_APOS;
+        
+        if (mostrarTimer) {
+          timerSegundosElement.textContent = segundosRestantes;
+          timerElement.classList.add('show');
+          
+          if (segundosRestantes <= 10) {
+            timerElement.classList.remove('warning');
+            timerElement.classList.add('critical');
+          } else if (segundosRestantes <= 20) {
+            timerElement.classList.add('warning');
+            timerElement.classList.remove('critical');
+          } else {
+            timerElement.classList.remove('warning', 'critical');
+          }
+        }
+        
+        if (segundosRestantes <= 0) {
+          clearInterval(intervaloTimer);
+        }
+      }, 1000);
+    }
+
+    function resetarTimeout() {
+      iniciarTimeout();
+      timerElement.classList.remove('show', 'warning', 'critical');
+    }
+
+    function voltarParaInicio() {
+      clearTimeout(timeoutInatividade);
+      clearInterval(intervaloTimer);
+      
+      localStorage.removeItem('tipoPedido');
+      localStorage.removeItem('pedidoParaFinalizar');
+      
+      window.location.href = '/index.html';
+    }
+
+    // ==================== SALVAR TIPO DE PEDIDO ====================
+    
+    function salvarTipoPedido(tipo) {
+      localStorage.setItem('tipoPedido', tipo);
+      clearTimeout(timeoutInatividade);
+      clearInterval(intervaloTimer);
+    }
+
+    // ==================== EVENT LISTENERS ====================
+    
+    document.addEventListener('click', resetarTimeout);
+    document.addEventListener('touchstart', resetarTimeout);
+    document.addEventListener('mousemove', resetarTimeout);
+    document.addEventListener('keydown', resetarTimeout);
+
+    // ==================== INICIALIZAÇÃO ====================
+    
+    carregarConfiguracoes();
+    
+    console.log('🍦 Página 2 (Escolha) iniciada com sistema de timeout');
+  </script>
+
+</body>
+
+</html>

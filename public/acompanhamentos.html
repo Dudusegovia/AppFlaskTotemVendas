@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personalize seu Pedido - Sorveteria Tudbom</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        html, body { height: 100%; overflow-x: hidden; }
+        .spinner { border: 4px solid #f3f4f6; border-top: 4px solid #ec4899; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .checkbox-item {
+            transition: all 0.2s ease;
+        }
+        
+        .checkbox-item.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        
+        .checkbox-item input:checked + label {
+            background-color: #ec4899;
+            color: white;
+            border-color: #ec4899;
+        }
+        
+        .modal-backdrop {
+            animation: fadeIn 0.2s ease-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .modal-content {
+            animation: slideUp 0.3s ease-out;
+        }
+        
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        #timer-inatividade {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(255, 255, 255, 0.95);
+            padding: 15px 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #ec4899;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 1000;
+        }
+        #timer-inatividade.show { opacity: 1; }
+        #timer-inatividade.warning { background-color: rgba(251, 191, 36, 0.95); animation: pulse 1s infinite; }
+        #timer-inatividade.critical { background-color: rgba(239, 68, 68, 0.95); color: white; animation: shake 0.5s infinite; }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+        
+        .unidade-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 28px;
+            height: 28px;
+            background-color: #3b82f6;
+            color: white;
+            border-radius: 50%;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        
+        .empty-message {
+            text-align: center;
+            padding: 2rem;
+            color: #9ca3af;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+
+    <!-- Timer de Inatividade -->
+    <div id="timer-inatividade">
+        ⏱️ Voltando ao início em <span id="timer-segundos">120</span>s
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+        <div class="bg-white p-8 rounded-lg shadow-2xl text-center">
+            <div class="spinner mx-auto mb-4"></div>
+            <p class="text-xl font-bold text-gray-700">Processando...</p>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-white shadow-md p-4 sticky top-0 z-10">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <button id="btn-voltar" class="text-pink-500 font-bold hover:text-pink-600 transition-colors flex items-center gap-2">
+                <i class="fas fa-arrow-left"></i>
+                <span>Voltar ao Carrinho</span>
+            </button>
+            <h1 class="text-2xl font-bold text-pink-500">Personalize seu Pedido</h1>
+            <div class="w-32"></div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-6xl mx-auto p-4 pb-32">
+        <div id="carrinho-container" class="space-y-6">
+            <!-- Itens do carrinho serão inseridos aqui -->
+        </div>
+    </main>
+
+    <!-- Footer com Total e Botão Continuar -->
+    <footer class="fixed bottom-0 left-0 right-0 bg-white border-t-4 border-pink-500 shadow-lg p-4 z-20">
+        <div class="max-w-6xl mx-auto flex justify-between items-center gap-4">
+            <div class="text-left">
+                <p class="text-sm text-gray-600">Total do Pedido</p>
+                <p id="total-pedido" class="text-3xl font-bold text-pink-500">R$ 0,00</p>
+            </div>
+            <button id="btn-continuar" class="bg-pink-500 hover:bg-pink-600 text-white font-bold py-4 px-8 rounded-lg text-xl transition-all transform hover:scale-105 active:scale-95 shadow-lg">
+                Continuar <i class="fas fa-arrow-right ml-2"></i>
+            </button>
+        </div>
+    </footer>
+
+    <!-- Modal para Selecionar Acompanhamentos de UMA unidade -->
+    <div id="modal-acompanhamentos" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 modal-backdrop">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden modal-content">
+                <!-- Header do Modal -->
+                <div class="bg-pink-500 text-white p-6 sticky top-0 z-10">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h2 id="modal-titulo" class="text-2xl font-bold">Personalize</h2>
+                            <p id="modal-subtitulo" class="text-sm opacity-90 mt-1"></p>
+                        </div>
+                        <button id="btn-fechar-modal" class="text-white hover:bg-pink-600 rounded-full w-10 h-10 flex items-center justify-center transition-colors">
+                            <i class="fas fa-times text-2xl"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Conteúdo do Modal -->
+                <div class="overflow-y-auto" style="max-height: calc(90vh - 200px);">
+                    <div class="p-6">
+                        <!-- Seção de Acompanhamentos Inclusos -->
+                        <div id="secao-inclusos" class="mb-8">
+                            <div class="bg-green-50 border-l-4 border-green-500 p-4 mb-4">
+                                <h3 class="text-xl font-bold text-green-800 mb-2">
+                                    <i class="fas fa-check-circle mr-2"></i>
+                                    Acompanhamentos Inclusos
+                                </h3>
+                                <p id="limite-inclusos" class="text-sm text-green-700"></p>
+                            </div>
+                            <div id="lista-inclusos" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <!-- Checkboxes dos inclusos serão inseridos aqui -->
+                            </div>
+                        </div>
+
+                        <!-- Seção de Adicionais Pagos -->
+                        <div id="secao-adicionais" class="mb-6">
+                            <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
+                                <h3 class="text-xl font-bold text-blue-800">
+                                    <i class="fas fa-plus-circle mr-2"></i>
+                                    Adicionais (Cobrados à Parte)
+                                </h3>
+                                <p class="text-sm text-blue-700 mt-1">Limite de <span id="limite-adicionais-texto">10</span> unidades de cada</p>
+                            </div>
+                            <div id="lista-adicionais" class="space-y-3">
+                                <!-- Adicionais serão inseridos aqui -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer do Modal -->
+                <div class="bg-gray-50 p-6 sticky bottom-0 border-t">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-lg font-semibold text-gray-700">Subtotal desta unidade:</span>
+                        <span id="modal-subtotal" class="text-2xl font-bold text-pink-500">R$ 0,00</span>
+                    </div>
+                    <button id="btn-confirmar-modal" class="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 rounded-lg text-lg transition-colors">
+                        Confirmar Personalização
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    // ==================== CONFIGURAÇÕES ====================
+    let MAX_INCLUSOS = 3;
+    let LIMITE_ADICIONAIS = 10;
+    let TIMEOUT_TOTAL = 120;
+    let MOSTRAR_TIMER_APOS = 30;
+    
+    let timeoutInatividade, intervaloTimer, segundosRestantes;
+    let carrinho = [];
+    let tipoPedido = '';
+    let adicionalCategorias = {};
+    let indexItemAtual = -1;
+    let unidadeAtualModal = -1;
+    let itemAtualModal = null;
+
+    const formatarMoeda = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const mostrarLoading = () => document.getElementById('loading-overlay').classList.remove('hidden');
+    const esconderLoading = () => document.getElementById('loading-overlay').classList.add('hidden');
+    
+    // ==================== SANITIZAÇÃO ====================
+    function sanitizarTexto(texto) {
+        const div = document.createElement('div');
+        div.textContent = texto;
+        return div.innerHTML;
+    }
+    
+    // ==================== CONFIGURAÇÕES ====================
+    async function carregarConfiguracoes() {
+        try {
+            const response = await fetch('/api/config');
+            if (response.ok) {
+                const configs = await response.json();
+                MAX_INCLUSOS = parseInt(configs.max_inclusos?.valor || 3);
+                TIMEOUT_TOTAL = parseInt(configs.timeout_totem?.valor || 120);
+                MOSTRAR_TIMER_APOS = parseInt(configs.mostrar_timer_apos?.valor || 30);
+                LIMITE_ADICIONAIS = parseInt(configs.limite_adicionais?.valor || 10);
+                console.log(`⚙️ Configs: max_inclusos=${MAX_INCLUSOS}, timeout=${TIMEOUT_TOTAL}s`);
+            } else {
+                console.warn('⚠️ Config API falhou, usando defaults');
+            }
+        } catch (error) {
+            console.warn('⚠️ Erro ao carregar configs, usando defaults:', error);
+        }
+    }
+    
+    // ==================== DADOS ADICIONAIS ====================
+    async function carregarAdicionais() {
+        try {
+            const response = await fetch('/api/dados?totem=true');
+            if (!response.ok) throw new Error('Erro ao buscar dados');
+            
+            const dados = await response.json();
+            adicionalCategorias = dados.adicional_categorias || {};
+            
+            console.log('✅ Adicionais carregados:', Object.keys(adicionalCategorias).length, 'categorias');
+        } catch (error) {
+            console.error('❌ Erro ao carregar adicionais:', error);
+            adicionalCategorias = {};
+        }
+    }
+    
+    // ==================== TIMEOUT ====================
+    function iniciarTimeout() {
+        segundosRestantes = TIMEOUT_TOTAL;
+        clearTimeout(timeoutInatividade);
+        clearInterval(intervaloTimer);
+        
+        timeoutInatividade = setTimeout(() => voltarParaInicio(), TIMEOUT_TOTAL * 1000);
+        
+        intervaloTimer = setInterval(() => {
+            segundosRestantes--;
+            const mostrarTimer = (TIMEOUT_TOTAL - segundosRestantes) >= MOSTRAR_TIMER_APOS;
+            
+            if (mostrarTimer) {
+                document.getElementById('timer-segundos').textContent = segundosRestantes;
+                document.getElementById('timer-inatividade').classList.add('show');
+                
+                const timer = document.getElementById('timer-inatividade');
+                if (segundosRestantes <= 10) {
+                    timer.classList.remove('warning');
+                    timer.classList.add('critical');
+                } else if (segundosRestantes <= 20) {
+                    timer.classList.add('warning');
+                    timer.classList.remove('critical');
+                } else {
+                    timer.classList.remove('warning', 'critical');
+                }
+            }
+            
+            if (segundosRestantes <= 0) clearInterval(intervaloTimer);
+        }, 1000);
+    }
+    
+    function resetarTimeout() {
+        iniciarTimeout();
+        const timer = document.getElementById('timer-inatividade');
+        timer.classList.remove('show', 'warning', 'critical');
+    }
+    
+    function voltarParaInicio() {
+        clearTimeout(timeoutInatividade);
+        clearInterval(intervaloTimer);
+        localStorage.removeItem('tipoPedido');
+        localStorage.removeItem('carrinhoParaAcompanhamentos');
+        localStorage.removeItem('pedidoParaFinalizar');
+        window.location.href = '/index.html';
+    }
+    
+    // ==================== RENDERIZAÇÃO PRINCIPAL ====================
+    function renderizarCarrinho() {
+        const container = document.getElementById('carrinho-container');
+        container.innerHTML = '';
+        
+        if (carrinho.length === 0) {
+            const p = document.createElement('p');
+            p.className = 'text-center text-gray-400 text-xl mt-10';
+            p.textContent = 'Carrinho vazio';
+            container.appendChild(p);
+            return;
+        }
+        
+        carrinho.forEach((item, index) => {
+            const card = document.createElement('div');
+            card.className = 'bg-white rounded-lg shadow-md p-6';
+            
+            // Header
+            const header = document.createElement('div');
+            header.className = 'flex justify-between items-start mb-4';
+            
+            const titulo = document.createElement('h3');
+            titulo.className = 'text-xl font-bold text-gray-800';
+            titulo.textContent = item.produto || item.nome;
+            
+            const preco = document.createElement('span');
+            preco.className = 'text-2xl font-bold text-pink-500';
+            preco.textContent = formatarMoeda(item.preco);
+            
+            header.appendChild(titulo);
+            header.appendChild(preco);
+            card.appendChild(header);
+            
+            // Se tem acompanhamentos
+            if (item.temAcompanhamentos && item.personalizacoes) {
+                const unidadesDiv = document.createElement('div');
+                unidadesDiv.className = 'space-y-3';
+                
+                item.personalizacoes.forEach((pers, unidadeIdx) => {
+                    const unidadeCard = document.createElement('div');
+                    unidadeCard.className = 'bg-gray-50 rounded-lg p-4 border-2 border-gray-200';
+                    
+                    const unidadeHeader = document.createElement('div');
+                    unidadeHeader.className = 'flex justify-between items-center mb-2';
+                    
+                    const badge = document.createElement('span');
+                    badge.className = 'unidade-badge';
+                    badge.textContent = unidadeIdx + 1;
+                    
+                    const btnPersonalizar = document.createElement('button');
+                    btnPersonalizar.className = 'text-pink-500 hover:text-pink-600 font-semibold text-sm flex items-center gap-1';
+                    btnPersonalizar.innerHTML = '<i class="fas fa-edit"></i> Personalizar';
+                    btnPersonalizar.onclick = () => abrirModal(index, unidadeIdx);
+                    
+                    unidadeHeader.appendChild(badge);
+                    unidadeHeader.appendChild(btnPersonalizar);
+                    unidadeCard.appendChild(unidadeHeader);
+                    
+                    // Inclusos
+                    if (pers.inclusos && pers.inclusos.length > 0) {
+                        const inclusosDiv = document.createElement('div');
+                        inclusosDiv.className = 'text-sm text-green-700 mb-1';
+                        
+                        const icon = document.createElement('i');
+                        icon.className = 'fas fa-check-circle mr-1';
+                        inclusosDiv.appendChild(icon);
+                        
+                        const text = document.createTextNode('Inclusos: ' + pers.inclusos.join(', '));
+                        inclusosDiv.appendChild(text);
+                        
+                        unidadeCard.appendChild(inclusosDiv);
+                    }
+                    
+                    // Adicionais
+                    if (pers.adicionais && pers.adicionais.length > 0) {
+                        const adicionaisDiv = document.createElement('div');
+                        adicionaisDiv.className = 'text-sm text-blue-700';
+                        
+                        const icon = document.createElement('i');
+                        icon.className = 'fas fa-plus-circle mr-1';
+                        adicionaisDiv.appendChild(icon);
+                        
+                        const adTexto = pers.adicionais.map(ad => 
+                            `${ad.nome} (${ad.quantidade}x)`
+                        ).join(', ');
+                        
+                        const text = document.createTextNode('Adicionais: ' + adTexto);
+                        adicionaisDiv.appendChild(text);
+                        
+                        unidadeCard.appendChild(adicionaisDiv);
+                    }
+                    
+                    // Se não tem nada
+                    if ((!pers.inclusos || pers.inclusos.length === 0) && 
+                        (!pers.adicionais || pers.adicionais.length === 0)) {
+                        const vazio = document.createElement('p');
+                        vazio.className = 'text-sm text-gray-400 italic';
+                        vazio.textContent = 'Sem personalização';
+                        unidadeCard.appendChild(vazio);
+                    }
+                    
+                    unidadesDiv.appendChild(unidadeCard);
+                });
+                
+                card.appendChild(unidadesDiv);
+            } else {
+                // Item sem acompanhamentos
+                const info = document.createElement('p');
+                info.className = 'text-gray-600';
+                info.textContent = `Quantidade: ${item.quantidade}`;
+                card.appendChild(info);
+            }
+            
+            container.appendChild(card);
+        });
+    }
+    
+    // ==================== MODAL ====================
+    function abrirModal(indexItem, unidade) {
+        indexItemAtual = indexItem;
+        unidadeAtualModal = unidade;
+        itemAtualModal = JSON.parse(JSON.stringify(carrinho[indexItem]));
+        
+        const modalTitulo = document.getElementById('modal-titulo');
+        const modalSubtitulo = document.getElementById('modal-subtitulo');
+        
+        modalTitulo.textContent = itemAtualModal.produto || itemAtualModal.nome;
+        modalSubtitulo.textContent = `Unidade ${unidade + 1} de ${itemAtualModal.quantidade}`;
+        
+        const categoria = itemAtualModal.categoria;
+        const acompanhamentos = adicionalCategorias[categoria] || { inclusos: [], adicionais: [] };
+        
+        renderizarInclusos(acompanhamentos.inclusos, itemAtualModal.personalizacoes[unidade]);
+        renderizarAdicionais(itemAtualModal.personalizacoes[unidade]);
+        atualizarSubtotalModal();
+        
+        document.getElementById('modal-acompanhamentos').classList.remove('hidden');
+        clearTimeout(timeoutInatividade);
+        clearInterval(intervaloTimer);
+    }
+    
+    function renderizarInclusos(inclusosDisponiveis, personalizacao) {
+        const container = document.getElementById('lista-inclusos');
+        const limiteTexto = document.getElementById('limite-inclusos');
+        
+        // ✅ TRATA CATEGORIA VAZIA
+        if (!inclusosDisponiveis || inclusosDisponiveis.length === 0) {
+            container.innerHTML = '<p class="empty-message col-span-2">Nenhum acompanhamento incluso disponível para esta categoria.</p>';
+            limiteTexto.textContent = 'Não há inclusos para este produto.';
+            document.getElementById('secao-inclusos').classList.add('opacity-50');
+            return;
+        }
+        
+        document.getElementById('secao-inclusos').classList.remove('opacity-50');
+        limiteTexto.textContent = `Escolha até ${MAX_INCLUSOS} acompanhamentos sem custo adicional`;
+        
+        container.innerHTML = '';
+        
+        inclusosDisponiveis.forEach(incluso => {
+            const div = document.createElement('div');
+            div.className = 'checkbox-item';
+            
+            const isChecked = personalizacao.inclusos.includes(incluso.nome);
+            const isDisabled = !isChecked && personalizacao.inclusos.length >= MAX_INCLUSOS;
+            
+            if (isDisabled) {
+                div.classList.add('disabled');
+            }
+            
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = `incluso-${incluso.nome.replace(/\s+/g, '-')}`;
+            checkbox.className = 'hidden';
+            checkbox.checked = isChecked;
+            checkbox.disabled = isDisabled;
+            
+            const label = document.createElement('label');
+            label.htmlFor = checkbox.id;
+            label.className = 'block p-3 border-2 rounded-lg cursor-pointer transition-all';
+            label.textContent = incluso.nome;
+            
+            checkbox.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    if (personalizacao.inclusos.length < MAX_INCLUSOS) {
+                        personalizacao.inclusos.push(incluso.nome);
+                    } else {
+                        e.target.checked = false;
+                        return;
+                    }
+                } else {
+                    personalizacao.inclusos = personalizacao.inclusos.filter(i => i !== incluso.nome);
+                }
+                renderizarInclusos(inclusosDisponiveis, personalizacao);
+            });
+            
+            div.appendChild(checkbox);
+            div.appendChild(label);
+            container.appendChild(div);
+        });
+    }
+    
+    function renderizarAdicionais(personalizacao) {
+        const container = document.getElementById('lista-adicionais');
+        const categoria = itemAtualModal.categoria;
+        const acompanhamentos = adicionalCategorias[categoria] || { adicionais: [] };
+        
+        document.getElementById('limite-adicionais-texto').textContent = LIMITE_ADICIONAIS;
+        
+        // ✅ TRATA CATEGORIA VAZIA
+        if (!acompanhamentos.adicionais || acompanhamentos.adicionais.length === 0) {
+            container.innerHTML = '<p class="empty-message">Nenhum adicional disponível para esta categoria.</p>';
+            document.getElementById('secao-adicionais').classList.add('opacity-50');
+            return;
+        }
+        
+        document.getElementById('secao-adicionais').classList.remove('opacity-50');
+        container.innerHTML = '';
+        
+        acompanhamentos.adicionais.forEach(item => {
+            const adicional = personalizacao.adicionais.find(a => a.nome === item.nome);
+            const quantidade = adicional ? adicional.quantidade : 0;
+            
+            const div = document.createElement('div');
+            div.className = 'bg-gray-50 rounded-lg p-4 flex justify-between items-center border-2 border-gray-200';
+            
+            const info = document.createElement('div');
+            info.className = 'flex-grow';
+            
+            const nome = document.createElement('p');
+            nome.className = 'font-semibold text-gray-800';
+            nome.textContent = item.nome;
+            
+            const preco = document.createElement('p');
+            preco.className = 'text-sm text-gray-600';
+            preco.textContent = formatarMoeda(item.preco) + ' cada';
+            
+            info.appendChild(nome);
+            info.appendChild(preco);
+            
+            const controles = document.createElement('div');
+            controles.className = 'flex items-center gap-3';
+            
+            const btnMenos = document.createElement('button');
+            btnMenos.className = 'btn-menos w-10 h-10 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold transition-colors';
+            btnMenos.innerHTML = '<i class="fas fa-minus"></i>';
+            btnMenos.disabled = quantidade === 0;
+            if (btnMenos.disabled) btnMenos.classList.add('opacity-50', 'cursor-not-allowed');
+            
+            const qtdSpan = document.createElement('span');
+            qtdSpan.className = 'qty-display font-bold text-xl w-8 text-center';
+            qtdSpan.textContent = quantidade;
+            
+            const btnMais = document.createElement('button');
+            btnMais.className = 'btn-mais w-10 h-10 rounded-full bg-pink-500 hover:bg-pink-600 text-white font-bold transition-colors';
+            btnMais.innerHTML = '<i class="fas fa-plus"></i>';
+            btnMais.disabled = quantidade >= LIMITE_ADICIONAIS;
+            if (btnMais.disabled) btnMais.classList.add('opacity-50', 'cursor-not-allowed');
+            
+            btnMenos.onclick = () => {
+                const ad = personalizacao.adicionais.find(a => a.nome === item.nome);
+                if (ad) {
+                    ad.quantidade--;
+                    if (ad.quantidade === 0) {
+                        personalizacao.adicionais = personalizacao.adicionais.filter(a => a.nome !== item.nome);
+                    }
+                }
+                renderizarAdicionais(personalizacao);
+                atualizarSubtotalModal();
+            };
+            
+            btnMais.onclick = () => {
+                const ad = personalizacao.adicionais.find(a => a.nome === item.nome);
+                if (ad) {
+                    if (ad.quantidade < LIMITE_ADICIONAIS) {
+                        ad.quantidade++;
+                    }
+                } else {
+                    personalizacao.adicionais.push({
+                        nome: item.nome,
+                        preco: item.preco,
+                        quantidade: 1
+                    });
+                }
+                renderizarAdicionais(personalizacao);
+                atualizarSubtotalModal();
+            };
+            
+            controles.appendChild(btnMenos);
+            controles.appendChild(qtdSpan);
+            controles.appendChild(btnMais);
+            
+            div.appendChild(info);
+            div.appendChild(controles);
+            
+            container.appendChild(div);
+        });
+    }
+    
+    function atualizarSubtotalModal() {
+        let subtotal = itemAtualModal.preco;
+        const personalizacao = itemAtualModal.personalizacoes[unidadeAtualModal];
+        
+        personalizacao.adicionais.forEach(ad => {
+            subtotal += ad.preco * ad.quantidade;
+        });
+        
+        document.getElementById('modal-subtotal').textContent = formatarMoeda(subtotal);
+    }
+    
+    // ==================== CALCULAR TOTAL ====================
+    function calcularTotal() {
+        let total = 0;
+        
+        carrinho.forEach(item => {
+            if (item.temAcompanhamentos && item.personalizacoes) {
+                item.personalizacoes.forEach(pers => {
+                    total += item.preco;
+                    pers.adicionais.forEach(ad => {
+                        total += ad.preco * ad.quantidade;
+                    });
+                });
+            } else {
+                total += item.preco * item.quantidade;
+            }
+        });
+        
+        document.getElementById('total-pedido').textContent = formatarMoeda(total);
+    }
+    
+    // ==================== EVENT LISTENERS ====================
+    document.getElementById('btn-voltar').addEventListener('click', () => {
+        if (confirm('Deseja voltar ao carrinho? Suas personalizações serão salvas.')) {
+            localStorage.setItem('carrinhoParaAcompanhamentos', JSON.stringify({ 
+                carrinho, 
+                tipo: tipoPedido 
+            }));
+            
+            clearTimeout(timeoutInatividade);
+            clearInterval(intervaloTimer);
+            window.location.href = '/totem.html';
+        }
+    });
+    
+    document.getElementById('btn-fechar-modal').addEventListener('click', () => {
+        document.getElementById('modal-acompanhamentos').classList.add('hidden');
+        iniciarTimeout();
+    });
+    
+    document.getElementById('btn-confirmar-modal').addEventListener('click', () => {
+        carrinho[indexItemAtual].personalizacoes[unidadeAtualModal] = itemAtualModal.personalizacoes[unidadeAtualModal];
+        
+        document.getElementById('modal-acompanhamentos').classList.add('hidden');
+        renderizarCarrinho();
+        calcularTotal();
+        iniciarTimeout();
+        
+        const aviso = document.createElement('div');
+        aviso.className = 'fixed top-20 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-2xl font-bold z-50';
+        aviso.innerHTML = '<i class="fas fa-check mr-2"></i>Personalização salva!';
+        document.body.appendChild(aviso);
+        setTimeout(() => aviso.remove(), 2000);
+    });
+    
+    document.getElementById('btn-continuar').addEventListener('click', () => {
+        const pedidoFinal = {
+            carrinho: [],
+            tipo: tipoPedido
+        };
+        
+        carrinho.forEach(item => {
+            if (item.temAcompanhamentos && item.personalizacoes) {
+                item.personalizacoes.forEach((pers, idx) => {
+                    // ✅ ESTRUTURA CORRETA: mantém nome original, adicionais separados
+                    const itemFinal = {
+                        produto_id: item.produto_id,
+                        produto: item.produto || item.nome,
+                        quantidade: 1,
+                        adicionais: []
+                    };
+                    
+                    // Inclusos vão como array separado (para o backend processar)
+                    if (pers.inclusos && pers.inclusos.length > 0) {
+                        itemFinal.inclusos = pers.inclusos;
+                    }
+                    
+                    // Adicionais pagos
+                    if (pers.adicionais && pers.adicionais.length > 0) {
+                        pers.adicionais.forEach(ad => {
+                            itemFinal.adicionais.push({
+                                nome: ad.nome,
+                                quantidade: ad.quantidade
+                            });
+                        });
+                    }
+                    
+                    pedidoFinal.carrinho.push(itemFinal);
+                });
+            } else {
+                pedidoFinal.carrinho.push({
+                    produto_id: item.produto_id,
+                    produto: item.produto || item.nome,
+                    quantidade: item.quantidade
+                });
+            }
+        });
+        
+        localStorage.setItem('pedidoParaFinalizar', JSON.stringify(pedidoFinal));
+        clearTimeout(timeoutInatividade);
+        clearInterval(intervaloTimer);
+        window.location.href = '/nome.html';
+    });
+    
+    ['click', 'touchstart', 'scroll', 'keydown'].forEach(event => {
+        document.addEventListener(event, resetarTimeout);
+    });
+    
+    // ==================== INICIALIZAÇÃO ====================
+    async function inicializar() {
+        mostrarLoading();
+        
+        await carregarConfiguracoes();
+        await carregarAdicionais();
+        
+        const dados = localStorage.getItem('carrinhoParaAcompanhamentos');
+        if (!dados) {
+            esconderLoading();
+            alert('Erro: carrinho não encontrado');
+            window.location.href = '/totem.html';
+            return;
+        }
+        
+        const parsed = JSON.parse(dados);
+        carrinho = parsed.carrinho || [];
+        tipoPedido = parsed.tipo || localStorage.getItem('tipoPedido');
+        
+        if (carrinho.length === 0) {
+            esconderLoading();
+            alert('Carrinho vazio');
+            window.location.href = '/totem.html';
+            return;
+        }
+        
+        carrinho.forEach(item => {
+            const categoria = item.categoria;
+            const temAcompanhamentos = adicionalCategorias[categoria] && 
+                ((adicionalCategorias[categoria].inclusos && adicionalCategorias[categoria].inclusos.length > 0) ||
+                 (adicionalCategorias[categoria].adicionais && adicionalCategorias[categoria].adicionais.length > 0));
+            
+            item.temAcompanhamentos = temAcompanhamentos;
+            
+            if (temAcompanhamentos) {
+                if (!item.personalizacoes) {
+                    item.personalizacoes = [];
+                    for (let i = 0; i < item.quantidade; i++) {
+                        item.personalizacoes.push({
+                            inclusos: [],
+                            adicionais: []
+                        });
+                    }
+                }
+            }
+        });
+        
+        renderizarCarrinho();
+        calcularTotal();
+        iniciarTimeout();
+        esconderLoading();
+    }
+    
+    inicializar();
+    console.log('🍦 Acompanhamentos: categorias vazias, limites claros, sem split!');
+</script>
+
+</body>
+</html>

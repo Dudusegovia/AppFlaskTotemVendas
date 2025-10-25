@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Status dos Pedidos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .pedido-pronto { animation: pulse 1.5s infinite; }
+        @keyframes pulse {
+            0%, 100% { 
+                transform: scale(1); 
+                box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); 
+            }
+            50% { 
+                transform: scale(1.05); 
+                box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); 
+            }
+        }
+        .spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .status-indicator {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            z-index: 1000;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .status-conectado {
+            background-color: #10b981;
+            color: white;
+        }
+        .status-erro {
+            background-color: #ef4444;
+            color: white;
+        }
+        .status-reconectando {
+            background-color: #f59e0b;
+            color: white;
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <!-- Indicador de Status de Conexão -->
+    <div id="status-indicator" class="status-indicator status-conectado" role="status" aria-live="polite">
+        <span id="status-icon">✓</span>
+        <span id="status-text">Conectado</span>
+    </div>
+
+    <header class="bg-white shadow p-4">
+        <h1 class="text-3xl font-bold text-center text-gray-800">Status do seu Pedido</h1>
+        <p class="text-center text-gray-500 text-sm mt-1">Acompanhe seu pedido em tempo real</p>
+    </header>
+    
+    <main class="flex flex-col md:flex-row h-[calc(100vh-92px)]">
+        
+        <div class="w-full md:w-1/2 bg-blue-50 p-4 border-r overflow-y-auto">
+            <h2 class="text-2xl font-bold text-center text-blue-800 mb-4 sticky top-0 bg-blue-50 py-2">EM PREPARO</h2>
+            <div id="preparando-container" class="space-y-4">
+                <!-- Loading inicial -->
+                <div class="text-center mt-10">
+                    <div class="spinner mx-auto mb-4"></div>
+                    <p class="text-gray-500">Carregando pedidos...</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="w-full md:w-1/2 bg-green-50 p-4 overflow-y-auto">
+            <h2 class="text-2xl font-bold text-center text-green-800 mb-4 sticky top-0 bg-green-50 py-2">PRONTOS PARA RETIRAR</h2>
+            <div id="prontos-container" class="space-y-4">
+                <!-- Loading inicial -->
+                <div class="text-center mt-10">
+                    <div class="spinner mx-auto mb-4"></div>
+                    <p class="text-gray-500">Carregando pedidos...</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+<script>
+    // ==================== CONFIGURAÇÕES ====================
+    const POLL_INTERVAL = 3000; // 3 segundos entre atualizações
+    const RETRY_INTERVALS = [1000, 2000, 5000, 10000, 20000, 30000]; // Backoff exponencial
+    const MAX_TIMEOUT = 10000; // 10 segundos de timeout por request
+    
+    // ==================== ESTADO GLOBAL ====================
+    let isUpdating = false;
+    let tentativaAtual = 0;
+    let ultimaBuscaBemSucedida = null;
+    let intervalId = null;
+    let timeoutId = null;
+    
+    const preparandoContainer = document.getElementById('preparando-container');
+    const prontosContainer = document.getElementById('prontos-container');
+    const statusIndicator = document.getElementById('status-indicator');
+    const statusIcon = document.getElementById('status-icon');
+    const statusText = document.getElementById('status-text');
+
+    // ==================== HELPERS DE UI ====================
+    
+    function atualizarStatusConexao(estado, mensagem) {
+        statusIndicator.className = 'status-indicator';
+        
+        switch (estado) {
+            case 'conectado':
+                statusIndicator.classList.add('status-conectado');
+                statusIcon.textContent = '✓';
+                statusText.textContent = mensagem || 'Conectado';
+                break;
+            case 'erro':
+                statusIndicator.classList.add('status-erro');
+                statusIcon.textContent = '✗';
+                statusText.textContent = mensagem || 'Erro de conexão';
+                break;
+            case 'reconectando':
+                statusIndicator.classList.add('status-reconectando');
+                statusIcon.textContent = '⟳';
+                statusText.textContent = mensagem || 'Reconectando...';
+                break;
+        }
+    }
+    
+    function sanitizarTexto(texto) {
+        /**
+         * Sanitiza texto para prevenir XSS.
+         * Remove tags HTML e caracteres especiais.
+         */
+        const div = document.createElement('div');
+        div.textContent = texto;
+        return div.innerHTML;
+    }
+    
+    function criarCardPedido(pedido, pronto = false) {
+        /**
+         * Cria card de pedido de forma segura usando DOM API.
+         * NÃO usa innerHTML com dados do usuário.
+         */
+        const card = document.createElement('div');
+        card.className = pronto 
+            ? 'bg-white p-4 rounded-lg text-center pedido-pronto border-4 border-green-400 fade-in'
+            : 'bg-white p-4 rounded-lg shadow-md text-center fade-in';
+        
+        // Número do pedido
+        const numero = document.createElement('span');
+        numero.className = 'text-4xl font-bold text-gray-700';
+        numero.textContent = pedido.id;
+        
+        card.appendChild(numero);
+        
+        return card;
+    }
+    
+    function mostrarMensagemVazia(container, mensagem) {
+        container.innerHTML = '';
+        const p = document.createElement('p');
+        p.className = 'text-gray-500 text-center mt-10';
+        p.textContent = mensagem;
+        container.appendChild(p);
+    }
+    
+    function mostrarErro(container, erro, tentativa) {
+        container.innerHTML = '';
+        
+        const div = document.createElement('div');
+        div.className = 'text-center mt-10 max-w-md mx-auto';
+        
+        const icone = document.createElement('div');
+        icone.className = 'text-5xl mb-4';
+        icone.textContent = '⚠️';
+        
+        const titulo = document.createElement('p');
+        titulo.className = 'text-red-500 font-bold mb-2 text-lg';
+        titulo.textContent = 'Erro ao conectar';
+        
+        const mensagem = document.createElement('p');
+        mensagem.className = 'text-gray-600 text-sm mb-2';
+        mensagem.textContent = erro;
+        
+        const tentativaInfo = document.createElement('p');
+        tentativaInfo.className = 'text-gray-400 text-xs mb-4';
+        tentativaInfo.textContent = `Tentativa ${tentativa + 1} de ${RETRY_INTERVALS.length + 1}`;
+        
+        const btnManual = document.createElement('button');
+        btnManual.className = 'bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg shadow transition-all';
+        btnManual.textContent = 'Tentar Agora';
+        btnManual.onclick = () => {
+            tentativaAtual = 0;
+            buscarPedidosStatus();
+        };
+        
+        div.appendChild(icone);
+        div.appendChild(titulo);
+        div.appendChild(mensagem);
+        div.appendChild(tentativaInfo);
+        div.appendChild(btnManual);
+        
+        container.appendChild(div);
+    }
+
+    // ==================== BUSCA DE PEDIDOS ====================
+    
+    async function buscarPedidosStatus() {
+        if (isUpdating) {
+            console.log('⏳ Atualização já em andamento, aguardando...');
+            return;
+        }
+        
+        isUpdating = true;
+        
+        try {
+            // ✅ MODO PÚBLICO: não retorna cliente_nome
+            const controller = new AbortController();
+            const timeoutSignal = setTimeout(() => controller.abort(), MAX_TIMEOUT);
+            
+            const response = await fetch('/api/pedidos?status=recebido,pronto&public=true', {
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutSignal);
+            
+            if (!response.ok) {
+                throw new Error(`Erro HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const pedidos = await response.json();
+            
+            // ✅ Sucesso: reseta contador de tentativas
+            tentativaAtual = 0;
+            ultimaBuscaBemSucedida = Date.now();
+            
+            renderizarStatus(pedidos);
+            atualizarStatusConexao('conectado', 'Conectado');
+            
+            console.log(`✅ ${pedidos.length} pedidos carregados`);
+            
+        } catch (error) {
+            console.error('❌ Erro ao buscar pedidos:', error);
+            
+            const mensagemErro = error.name === 'AbortError'
+                ? 'Tempo de conexão excedido'
+                : error.message || 'Falha na comunicação com o servidor';
+            
+            atualizarStatusConexao('erro', `Erro (tentando...)`);
+            
+            // Mostra erro apenas se não houver dados carregados
+            if (!ultimaBuscaBemSucedida) {
+                mostrarErro(preparandoContainer, mensagemErro, tentativaAtual);
+                mostrarErro(prontosContainer, mensagemErro, tentativaAtual);
+            }
+            
+            // ✅ RETRY COM BACKOFF EXPONENCIAL
+            agendarRetry();
+            
+        } finally {
+            isUpdating = false;
+        }
+    }
+    
+    function agendarRetry() {
+        // Cancela polling normal
+        if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = null;
+        }
+        
+        // Define delay do retry baseado na tentativa atual
+        const delay = tentativaAtual < RETRY_INTERVALS.length 
+            ? RETRY_INTERVALS[tentativaAtual]
+            : RETRY_INTERVALS[RETRY_INTERVALS.length - 1];
+        
+        console.log(`🔄 Nova tentativa em ${delay / 1000}s (tentativa ${tentativaAtual + 1})`);
+        
+        atualizarStatusConexao('reconectando', `Reconectando em ${delay / 1000}s...`);
+        
+        tentativaAtual++;
+        
+        timeoutId = setTimeout(() => {
+            buscarPedidosStatus().then(() => {
+                // Se conectou, reinicia polling normal
+                if (tentativaAtual === 0) {
+                    iniciarPolling();
+                }
+            });
+        }, delay);
+    }
+    
+    function iniciarPolling() {
+        // Limpa interval anterior se existir
+        if (intervalId) {
+            clearInterval(intervalId);
+        }
+        
+        intervalId = setInterval(buscarPedidosStatus, POLL_INTERVAL);
+        console.log(`🔄 Polling iniciado: a cada ${POLL_INTERVAL / 1000}s`);
+    }
+
+    // ==================== RENDERIZAÇÃO ====================
+    
+    function renderizarStatus(pedidos) {
+        const pedidosRecebidos = pedidos.filter(p => p.status === 'recebido');
+        const pedidosProntos = pedidos.filter(p => p.status === 'pronto');
+
+        // Renderiza "EM PREPARO"
+        preparandoContainer.innerHTML = '';
+        if (pedidosRecebidos.length === 0) {
+            mostrarMensagemVazia(preparandoContainer, 'Nenhum pedido em preparo.');
+        } else {
+            pedidosRecebidos.forEach(pedido => {
+                const card = criarCardPedido(pedido, false);
+                preparandoContainer.appendChild(card);
+            });
+        }
+
+        // Renderiza "PRONTOS PARA RETIRAR"
+        prontosContainer.innerHTML = '';
+        if (pedidosProntos.length === 0) {
+            mostrarMensagemVazia(prontosContainer, 'Nenhum pedido pronto para retirada.');
+        } else {
+            pedidosProntos.forEach(pedido => {
+                const card = criarCardPedido(pedido, true);
+                prontosContainer.appendChild(card);
+            });
+        }
+    }
+
+    // ==================== INICIALIZAÇÃO ====================
+    
+    function inicializar() {
+        console.log('🍦 Tela de Status iniciada (modo público)');
+        console.log(`📊 Configuração: poll=${POLL_INTERVAL}ms, timeout=${MAX_TIMEOUT}ms`);
+        
+        // Busca inicial
+        buscarPedidosStatus();
+        
+        // Inicia polling regular
+        iniciarPolling();
+    }
+    
+    // ==================== CLEANUP ====================
+    
+    window.addEventListener('beforeunload', () => {
+        if (intervalId) clearInterval(intervalId);
+        if (timeoutId) clearTimeout(timeoutId);
+    });
+    
+    // ==================== START ====================
+    
+    inicializar();
+</script>
+</body>
+</html>

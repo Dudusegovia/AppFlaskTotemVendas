@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Identificação - Sorveteria Tudbom</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .animate-slide-up {
+            animation: slideUp 0.4s ease-out;
+        }
+        
+        .btn-voltar {
+            transition: all 0.3s ease;
+        }
+        
+        .btn-voltar:hover {
+            transform: translateX(-5px);
+        }
+
+        #timer-inatividade {
+            position: fixed; top: 20px; right: 20px;
+            background-color: rgba(255, 255, 255, 0.95);
+            padding: 15px 20px; border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            font-size: 1.2rem; font-weight: bold; color: #ec4899;
+            opacity: 0; transition: opacity 0.3s ease; z-index: 1000;
+        }
+
+        #timer-inatividade.show { opacity: 1; }
+        #timer-inatividade.warning { background-color: rgba(251, 191, 36, 0.95); animation: pulse 1s infinite; }
+        #timer-inatividade.critical { background-color: rgba(239, 68, 68, 0.95); color: white; animation: shake 0.5s infinite; }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        
+        .modal-overlay {
+            position: fixed; inset: 0; background-color: rgba(0, 0, 0, 0.7);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 9999; animation: fadeIn 0.2s ease-out;
+        }
+        .modal-content {
+            background: white; border-radius: 16px; max-width: 500px; width: 90%;
+            max-height: 80vh; overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.3s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-pink-500 flex flex-col items-center justify-center min-h-screen text-white p-4">
+
+    <div id="timer-inatividade">
+        ⏱️ Voltando ao início em <span id="timer-segundos">60</span>s
+    </div>
+
+    <!-- Modal de Erro de Estoque -->
+    <div id="estoque-modal" class="hidden modal-overlay">
+        <div class="modal-content">
+            <div class="bg-red-500 text-white p-6 rounded-t-2xl">
+                <div class="flex items-center gap-3">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                    </svg>
+                    <h3 class="text-2xl font-bold">Estoque Insuficiente</h3>
+                </div>
+            </div>
+            <div class="p-6">
+                <p class="text-gray-700 mb-4">Desculpe, alguns itens do seu pedido não estão mais disponíveis:</p>
+                <div id="estoque-lista" class="bg-gray-50 rounded-lg p-4 mb-4 max-h-60 overflow-y-auto">
+                    <!-- Preenchido dinamicamente -->
+                </div>
+                <p class="text-sm text-gray-600 mb-6">
+                    <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    Por favor, volte ao carrinho e ajuste seu pedido.
+                </p>
+                <button id="btn-voltar-carrinho" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-lg transition-colors">
+                    Voltar ao Carrinho
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <button id="btn-voltar" 
+            class="btn-voltar fixed top-4 left-4 bg-white bg-opacity-20 hover:bg-opacity-30 text-white font-bold py-3 px-6 rounded-lg shadow-lg backdrop-blur-sm flex items-center gap-2 transition-all z-10">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd" />
+        </svg>
+        Voltar ao Carrinho
+    </button>
+
+    <div id="input-container" class="text-center w-full max-w-lg animate-slide-up">
+        <h1 class="text-5xl font-bold mb-4">Só mais um passo!</h1>
+        <p class="text-xl mb-8">Para quem devemos chamar o pedido?</p>
+        
+        <form id="form-nome">
+            <input type="text" 
+                   id="cliente-nome" 
+                   placeholder="Digite seu nome aqui"
+                   class="w-full text-4xl text-center p-4 rounded-lg text-gray-800 shadow-lg focus:outline-none focus:ring-4 focus:ring-yellow-300 transition-all"
+                   maxlength="50"
+                   required>
+            
+            <button type="submit"
+                    id="btn-confirmar"
+                    class="mt-6 w-full bg-yellow-400 hover:bg-yellow-500 text-pink-800 font-bold text-2xl py-4 rounded-lg shadow-lg transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+                Confirmar Pedido
+            </button>
+        </form>
+        
+        <p class="text-sm mt-4 text-white text-opacity-80">
+            ℹ️ Seu nome será usado para chamar quando o pedido estiver pronto
+        </p>
+    </div>
+
+    <div id="success-container" class="hidden text-center animate-slide-up">
+        <div class="mb-6">
+            <svg class="w-24 h-24 mx-auto text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+        </div>
+        <h1 class="text-5xl font-bold mb-4">Obrigado!</h1>
+        <p class="text-2xl mt-4">Seu pedido foi enviado com sucesso!</p>
+        <p class="text-xl mt-2">Acompanhe o status na tela.</p>
+        <div class="mt-6 flex items-center justify-center gap-2 text-yellow-300">
+            <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-yellow-300"></div>
+            <span>Redirecionando...</span>
+        </div>
+    </div>
+
+<script>
+    // ==================== CONFIGURAÇÕES ====================
+    let TIMEOUT_TOTAL = 60;
+    let MOSTRAR_TIMER_APOS = 30;
+    const MAX_TENTATIVAS = 3;
+    
+    let timeoutInatividade, intervaloTimer, segundosRestantes;
+    let clientRequestId = null;
+    let tentativasEnvio = 0;
+
+    const form = document.getElementById('form-nome');
+    const nomeInput = document.getElementById('cliente-nome');
+    const btnConfirmar = document.getElementById('btn-confirmar');
+    const btnVoltar = document.getElementById('btn-voltar');
+    const inputContainer = document.getElementById('input-container');
+    const successContainer = document.getElementById('success-container');
+    const timerElement = document.getElementById('timer-inatividade');
+    const timerSegundosElement = document.getElementById('timer-segundos');
+    const estoqueModal = document.getElementById('estoque-modal');
+    const estoqueLista = document.getElementById('estoque-lista');
+    const btnVoltarCarrinho = document.getElementById('btn-voltar-carrinho');
+
+    // ==================== IDEMPOTÊNCIA ====================
+    
+    function gerarClientRequestId() {
+        /**
+         * Gera UUID usando crypto.randomUUID() (moderno e seguro).
+         * Fallback para geração manual se não disponível.
+         */
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+            return crypto.randomUUID();
+        }
+        // Fallback
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+    
+    function inicializarClientRequestId() {
+        /**
+         * Cria ou recupera clientRequestId único para este pedido.
+         * Usa sessionStorage para persistir em refresh.
+         */
+        const existente = sessionStorage.getItem('clientRequestId');
+        if (existente) {
+            clientRequestId = existente;
+            console.log('🔑 clientRequestId recuperado:', clientRequestId);
+        } else {
+            clientRequestId = gerarClientRequestId();
+            sessionStorage.setItem('clientRequestId', clientRequestId);
+            console.log('🔑 clientRequestId gerado:', clientRequestId);
+        }
+    }
+    
+    function verificarPedidoJaEnviado() {
+        /**
+         * Verifica se este clientRequestId já foi usado com sucesso.
+         */
+        const enviado = sessionStorage.getItem('pedidoEnviado_' + clientRequestId);
+        return enviado === 'true';
+    }
+    
+    function marcarPedidoComoEnviado() {
+        sessionStorage.setItem('pedidoEnviado_' + clientRequestId, 'true');
+        console.log('✅ Pedido marcado como enviado (clientRequestId:', clientRequestId + ')');
+    }
+
+    // ==================== VALIDAÇÃO DE NOME ====================
+    
+    function validarNome(nome) {
+        nome = nome.trim();
+        
+        if (nome.length < 2) {
+            return { valido: false, mensagem: 'Nome muito curto (mínimo 2 caracteres)' };
+        }
+        
+        if (nome.length > 50) {
+            return { valido: false, mensagem: 'Nome muito longo (máximo 50 caracteres)' };
+        }
+        
+        if (!/[a-zA-ZÀ-ÿ]/.test(nome)) {
+            return { valido: false, mensagem: 'Nome deve conter pelo menos uma letra' };
+        }
+        
+        if (!/^[a-zA-ZÀ-ÿ\s'\-]+$/.test(nome)) {
+            return { valido: false, mensagem: 'Nome contém caracteres não permitidos' };
+        }
+        
+        return { valido: true, nome: nome };
+    }
+
+    // ==================== MODAL DE ERRO DE ESTOQUE ====================
+    
+    function mostrarErroEstoque(faltantes, mensagem) {
+        estoqueLista.innerHTML = '';
+        
+        if (faltantes && faltantes.length > 0) {
+            faltantes.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'bg-white border-l-4 border-red-500 p-3 mb-2 rounded';
+                
+                const titulo = document.createElement('p');
+                titulo.className = 'font-bold text-gray-800';
+                titulo.textContent = item.item || 'Item';
+                
+                const info = document.createElement('p');
+                info.className = 'text-sm text-gray-600 mt-1';
+                if (item.motivo) {
+                    info.textContent = item.motivo;
+                } else if (item.disponivel !== undefined) {
+                    info.textContent = `Disponível: ${item.disponivel} | Solicitado: ${item.solicitado}`;
+                }
+                
+                div.appendChild(titulo);
+                if (info.textContent) div.appendChild(info);
+                
+                estoqueLista.appendChild(div);
+            });
+        } else {
+            const p = document.createElement('p');
+            p.className = 'text-gray-600';
+            p.textContent = mensagem || 'Alguns itens não estão mais disponíveis.';
+            estoqueLista.appendChild(p);
+        }
+        
+        estoqueModal.classList.remove('hidden');
+        clearTimeout(timeoutInatividade);
+        clearInterval(intervaloTimer);
+    }
+    
+    btnVoltarCarrinho.addEventListener('click', () => {
+        window.location.href = '/acompanhamentos.html';
+    });
+
+    // ==================== RETRY COM BACKOFF ====================
+    
+    async function fetchWithBackoff(url, opts = {}, maxTries = MAX_TENTATIVAS) {
+        /**
+         * Faz fetch com retry e backoff exponencial.
+         * @param {string} url - URL da requisição
+         * @param {object} opts - Opções do fetch
+         * @param {number} maxTries - Número máximo de tentativas
+         * @returns {Promise<Response>}
+         */
+        let delay = 600; // Delay inicial: 600ms
+        let lastError = null;
+        
+        for (let attempt = 1; attempt <= maxTries; attempt++) {
+            try {
+                console.log(`📡 Tentativa ${attempt}/${maxTries} de envio...`);
+                
+                // Atualiza feedback visual
+                const textoTentativa = attempt > 1 ? ` (tentativa ${attempt}/${maxTries})` : '';
+                btnConfirmar.innerHTML = `<div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-pink-800 mr-2"></div>Enviando${textoTentativa}...`;
+                
+                const response = await fetch(url, opts);
+                
+                // Sucesso ou erro conhecido
+                return response;
+                
+            } catch (error) {
+                lastError = error;
+                console.error(`❌ Tentativa ${attempt} falhou:`, error.message);
+                
+                // Se não é a última tentativa, aguarda antes de retry
+                if (attempt < maxTries) {
+                    console.log(`⏳ Aguardando ${delay}ms antes de retry...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay = Math.min(delay * 2, 5000); // Dobra delay, max 5s
+                }
+            }
+        }
+        
+        // Se chegou aqui, todas as tentativas falharam
+        throw new Error(lastError?.message || 'Falha de rede após múltiplas tentativas');
+    }
+
+    // ==================== CARREGAR CONFIGURAÇÕES ====================
+    
+    async function carregarConfiguracoes() {
+        try {
+            const response = await fetch('/api/config');
+            if (response.ok) {
+                const configs = await response.json();
+                TIMEOUT_TOTAL = parseInt(configs.timeout_nome?.valor || 60);
+                MOSTRAR_TIMER_APOS = parseInt(configs.mostrar_timer_apos?.valor || 30);
+                console.log(`⏱️ Timeout: ${TIMEOUT_TOTAL}s | Timer: ${MOSTRAR_TIMER_APOS}s`);
+            } else {
+                console.warn('⚠️ Config API falhou, usando defaults');
+            }
+        } catch (error) {
+            console.warn('⚠️ Erro ao carregar configs:', error);
+        }
+        iniciarTimeout();
+    }
+
+    // ==================== TIMEOUT ====================
+    
+    function iniciarTimeout() {
+        segundosRestantes = TIMEOUT_TOTAL;
+        clearTimeout(timeoutInatividade);
+        clearInterval(intervaloTimer);
+        
+        timeoutInatividade = setTimeout(() => voltarParaInicio(), TIMEOUT_TOTAL * 1000);
+        
+        intervaloTimer = setInterval(() => {
+            segundosRestantes--;
+            const tempoRestante = TIMEOUT_TOTAL - Math.floor((TIMEOUT_TOTAL - segundosRestantes));
+            const mostrarTimer = tempoRestante <= MOSTRAR_TIMER_APOS;
+            
+            if (mostrarTimer) {
+                timerSegundosElement.textContent = segundosRestantes;
+                timerElement.classList.add('show');
+                
+                if (segundosRestantes <= 10) {
+                    timerElement.classList.remove('warning');
+                    timerElement.classList.add('critical');
+                } else if (segundosRestantes <= 20) {
+                    timerElement.classList.add('warning');
+                    timerElement.classList.remove('critical');
+                } else {
+                    timerElement.classList.remove('warning', 'critical');
+                }
+            }
+            
+            if (segundosRestantes <= 0) clearInterval(intervaloTimer);
+        }, 1000);
+    }
+
+    function resetarTimeout() {
+        iniciarTimeout();
+        timerElement.classList.remove('show', 'warning', 'critical');
+    }
+
+    function voltarParaInicio() {
+        clearTimeout(timeoutInatividade);
+        clearInterval(intervaloTimer);
+        localStorage.removeItem('tipoPedido');
+        localStorage.removeItem('pedidoParaFinalizar');
+        localStorage.removeItem('carrinhoParaAcompanhamentos');
+        window.location.href = '/index.html';
+    }
+
+    // ==================== FOCA NO INPUT ====================
+    
+    nomeInput.focus();
+
+    // ==================== BOTÃO VOLTAR ====================
+    
+    btnVoltar.addEventListener('click', () => {
+        if (confirm('Deseja voltar ao carrinho? Seu pedido não será perdido.')) {
+            clearTimeout(timeoutInatividade);
+            clearInterval(intervaloTimer);
+            window.location.href = '/acompanhamentos.html';
+        }
+    });
+
+    // ==================== ENVIO DO FORMULÁRIO ====================
+    
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        // ✅ VERIFICA SE JÁ FOI ENVIADO (IDEMPOTÊNCIA)
+        if (verificarPedidoJaEnviado()) {
+            console.warn('⚠️ Pedido já foi enviado com este clientRequestId, ignorando');
+            inputContainer.classList.add('hidden');
+            successContainer.classList.remove('hidden');
+            setTimeout(() => window.location.href = '/index.html', 2000);
+            return;
+        }
+
+        const nomeDigitado = nomeInput.value.trim();
+        
+        // ✅ VALIDAÇÃO ROBUSTA
+        const validacao = validarNome(nomeDigitado);
+        if (!validacao.valido) {
+            alert('❌ ' + validacao.mensagem);
+            nomeInput.focus();
+            return;
+        }
+        
+        const nome = validacao.nome;
+
+        // Recupera dados do pedido
+        const dadosSalvosStr = localStorage.getItem('pedidoParaFinalizar');
+        if (!dadosSalvosStr) {
+            alert('Erro: dados do pedido não encontrados.');
+            window.location.href = '/totem.html';
+            return;
+        }
+        
+        let dadosSalvos;
+        try {
+            dadosSalvos = JSON.parse(dadosSalvosStr);
+        } catch (error) {
+            console.error('Erro ao parse dados:', error);
+            alert('Erro: dados do pedido corrompidos.');
+            window.location.href = '/totem.html';
+            return;
+        }
+
+        if (!dadosSalvos.carrinho || !dadosSalvos.tipo || dadosSalvos.carrinho.length === 0) {
+            alert('Erro: carrinho inválido.');
+            window.location.href = '/totem.html';
+            return;
+        }
+
+        // ✅ MONTA PAYLOAD COM clientRequestId
+        const dadosPedido = {
+            itens: dadosSalvos.carrinho,
+            cliente_nome: nome,
+            tipo_pedido: dadosSalvos.tipo,
+            clientRequestId: clientRequestId  // ✅ IDEMPOTÊNCIA
+        };
+
+        // Desabilita UI
+        btnConfirmar.disabled = true;
+        btnVoltar.disabled = true;
+        btnConfirmar.innerHTML = '<div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-pink-800 mr-2"></div>Enviando...';
+        
+        clearTimeout(timeoutInatividade);
+        clearInterval(intervaloTimer);
+
+        try {
+            // ✅ PREPARA HEADERS
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            
+            // ✅ X-CSRF-Token se existir (para futuro uso autenticado)
+            // Rotas públicas não exigem, mas incluímos se disponível
+            const csrfToken = getCsrfToken();
+            if (csrfToken) {
+                headers['X-CSRF-Token'] = csrfToken;
+            }
+            
+            // ✅ FETCH COM RETRY/BACKOFF
+            const response = await fetchWithBackoff('/api/pedidos', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(dadosPedido)
+            });
+
+            // ✅ TRATAMENTO DE ERRO 409 (ESTOQUE)
+            if (response.status === 409) {
+                const errorData = await response.json();
+                mostrarErroEstoque(errorData.faltantes, errorData.message);
+                
+                btnConfirmar.disabled = false;
+                btnVoltar.disabled = false;
+                btnConfirmar.textContent = 'Confirmar Pedido';
+                return;
+            }
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || `Erro HTTP ${response.status}`);
+            }
+            
+            const resultado = await response.json();
+            
+            // ✅ MARCA COMO ENVIADO (IDEMPOTÊNCIA)
+            marcarPedidoComoEnviado();
+            
+            // Limpa localStorage
+            localStorage.removeItem('pedidoParaFinalizar');
+            localStorage.removeItem('tipoPedido');
+            localStorage.removeItem('carrinhoParaAcompanhamentos');
+
+            // Mostra sucesso
+            inputContainer.classList.add('hidden');
+            successContainer.classList.remove('hidden');
+            
+            console.log(`✅ Pedido #${resultado.pedidoId} enviado com sucesso!`);
+
+            // Redireciona após 3s
+            setTimeout(() => {
+                // Limpa sessionStorage ao finalizar com sucesso
+                sessionStorage.clear();
+                window.location.href = '/index.html';
+            }, 3000);
+
+        } catch (error) {
+            console.error('❌ Erro ao finalizar pedido:', error);
+            
+            // Reabilita UI
+            btnConfirmar.disabled = false;
+            btnVoltar.disabled = false;
+            btnConfirmar.textContent = 'Confirmar Pedido';
+            iniciarTimeout();
+            
+            // Mensagem amigável
+            let mensagem = 'Desculpe, não foi possível enviar seu pedido.';
+            if (error.message.includes('Falha de rede')) {
+                mensagem += '\n\nVerifique sua conexão e tente novamente.';
+            } else {
+                mensagem += '\n\n' + error.message;
+            }
+            
+            alert(`❌ ${mensagem}`);
+        }
+    });
+    
+    // ==================== UTILITÁRIO: OBTER CSRF TOKEN ====================
+    
+    function getCsrfToken() {
+        /**
+         * Tenta obter X-CSRF-Token de meta tag ou cookie.
+         * Útil para futuras rotas autenticadas.
+         */
+        // 1. Tenta meta tag
+        const metaTag = document.querySelector('meta[name="csrf-token"]');
+        if (metaTag) {
+            return metaTag.getAttribute('content');
+        }
+        
+        // 2. Tenta cookie
+        const cookies = document.cookie.split(';');
+        for (let cookie of cookies) {
+            const [name, value] = cookie.trim().split('=');
+            if (name === 'csrf_token') {
+                return decodeURIComponent(value);
+            }
+        }
+        
+        return null;
+    }
+    
+    // ==================== EVENT LISTENERS ====================
+    
+    document.addEventListener('click', resetarTimeout);
+    document.addEventListener('touchstart', resetarTimeout);
+    document.addEventListener('keydown', resetarTimeout);
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !btnVoltar.disabled) {
+            btnVoltar.click();
+        }
+    });
+
+    // ==================== INICIALIZAÇÃO ====================
+    
+    inicializarClientRequestId();
+    carregarConfiguracoes();
+    
+    console.log('🍦 Nome.html iniciado com idempotência (clientRequestId) e retry/backoff!');
+</script>
+</body>
+</html>

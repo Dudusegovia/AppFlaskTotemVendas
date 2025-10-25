@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Totem de Atendimento - Sorveteria Tudbom</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        html, body { height: 100%; overflow: hidden; }
+        .menu-item.active { background-color: rgba(236, 72, 153, 0.1); border-left: 4px solid #EC4899; font-weight: bold; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+        .btn-qty {
+            width: 28px; height: 28px; border-radius: 50%;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-weight: bold; transition: background-color 0.2s;
+        }
+        .btn-qty:disabled { background-color: #e5e7eb; color: #9ca3af; cursor: not-allowed; }
+        .sidebar-open-overlay { display: block; }
+        .menu-sidebar.open, .cart-sidebar.open { transform: translateX(0); }
+        .spinner { border: 4px solid #f3f4f6; border-top: 4px solid #ec4899; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #timer-inatividade {
+            position: fixed; top: 20px; right: 20px; background-color: rgba(255, 255, 255, 0.95);
+            padding: 15px 20px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            font-size: 1.2rem; font-weight: bold; color: #ec4899; opacity: 0; transition: opacity 0.3s ease; z-index: 1000;
+        }
+        #timer-inatividade.show { opacity: 1; }
+        #timer-inatividade.warning { background-color: rgba(251, 191, 36, 0.95); animation: pulse 1s infinite; }
+        #timer-inatividade.critical { background-color: rgba(239, 68, 68, 0.95); color: white; animation: shake 0.5s infinite; }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+        
+        /* Modal de Erro de Estoque */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            animation: fadeIn 0.2s ease-out;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.3s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideUp {
+            from { transform: translateY(30px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 flex flex-col lg:flex-row h-screen font-sans">
+
+    <div id="timer-inatividade">⏱️ Voltando ao início em <span id="timer-segundos">120</span>s</div>
+
+    <div id="loading-overlay" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+        <div class="bg-white p-8 rounded-lg shadow-2xl text-center">
+            <div class="spinner mx-auto mb-4"></div>
+            <p class="text-xl font-bold text-gray-700">Processando...</p>
+        </div>
+    </div>
+
+    <!-- Modal de Erro de Estoque -->
+    <div id="estoque-modal" class="hidden modal-overlay">
+        <div class="modal-content">
+            <div class="bg-red-500 text-white p-6 rounded-t-2xl">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-exclamation-circle text-3xl"></i>
+                    <h3 class="text-2xl font-bold">Estoque Insuficiente</h3>
+                </div>
+            </div>
+            <div class="p-6">
+                <p class="text-gray-700 mb-4">Desculpe, alguns itens do seu pedido não estão mais disponíveis:</p>
+                <div id="estoque-lista" class="bg-gray-50 rounded-lg p-4 mb-4 max-h-60 overflow-y-auto">
+                    <!-- Preenchido dinamicamente -->
+                </div>
+                <p class="text-sm text-gray-600 mb-6">
+                    <i class="fas fa-info-circle"></i> 
+                    Por favor, remova os itens em falta ou escolha outros produtos.
+                </p>
+                <button id="btn-fechar-modal" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-lg transition-colors">
+                    Entendi
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="sidebar-overlay" class="hidden fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"></div>
+
+    <header class="lg:hidden flex justify-between items-center p-4 bg-white shadow-md w-full">
+        <button id="btn-menu-toggle" class="text-2xl text-gray-600"><i class="fas fa-bars"></i></button>
+        <h1 class="text-xl font-bold text-pink-500">Sorveteria Tudbom</h1>
+        <button id="btn-cart-toggle" class="text-2xl text-gray-600 relative">
+            <i class="fas fa-shopping-cart"></i>
+            <span id="cart-badge" class="absolute -top-1 -right-2 bg-pink-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center hidden">0</span>
+        </button>
+    </header>
+
+    <aside id="menu-sidebar" class="menu-sidebar fixed top-0 left-0 h-full w-64 bg-white shadow-lg flex flex-col transform -translate-x-full lg:transform-none transition-transform duration-300 z-40 lg:relative lg:w-1/5">
+        <div class="p-4 text-center border-b">
+            <h2 class="text-2xl font-bold text-pink-500 hidden lg:block">Sorveteria Tudbom</h2>
+        </div>
+        <ul id="menuList" class="flex-1 w-full overflow-y-auto p-2">
+            <p class="p-4 text-center text-gray-400">Carregando categorias...</p>
+        </ul>
+    </aside>
+
+    <main class="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+        <h1 id="headerTitle" class="text-3xl lg:text-4xl font-bold mb-6 lg:mb-8">Nossos Produtos</h1>
+        <div id="grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <p class="p-4 text-center text-gray-400 col-span-full">Selecione uma categoria para ver os produtos.</p>
+        </div>
+    </main>
+
+    <aside id="cart-sidebar" class="cart-sidebar fixed top-0 right-0 h-full w-full max-w-sm bg-white shadow-xl flex flex-col p-6 transform translate-x-full lg:transform-none transition-transform duration-300 z-40 lg:relative lg:w-1/5">
+        <h2 class="text-2xl font-bold border-b pb-4 mb-4">Meu Carrinho</h2>
+        <div id="carrinho-itens" class="flex-grow overflow-y-auto">
+            <p class="text-gray-400">Seu carrinho está vazio.</p>
+        </div>
+        <div class="border-t pt-4 mt-4">
+            <div class="flex justify-between items-center font-bold text-xl mb-4">
+                <span>Total:</span>
+                <span id="carrinho-total">R$ 0,00</span>
+            </div>
+            <button id="btn-finalizar" class="w-full bg-pink-500 text-white py-3 rounded-lg font-bold hover:bg-pink-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">
+                Finalizar Pedido
+            </button>
+            <button id="btn-limpar" class="w-full bg-gray-200 text-gray-600 py-2 rounded-lg mt-2 hover:bg-gray-300">Limpar Carrinho</button>
+        </div>
+    </aside>
+
+<script>
+
+    const API_URL = '/api/dados?totem=true';
+    const CONFIG_API_URL = '/api/config';
+    
+    let TIMEOUT_TOTAL = 120, MOSTRAR_TIMER_APOS = 30;
+    let timeoutInatividade, intervaloTimer, segundosRestantes;
+    let carrinho = [], menuData = {}, adicionalCategoriasData = [];
+    
+    const elements = {
+        menuList: document.getElementById('menuList'),
+        headerTitle: document.getElementById('headerTitle'),
+        grid: document.getElementById('grid'),
+        carrinhoItens: document.getElementById('carrinho-itens'),
+        carrinhoTotal: document.getElementById('carrinho-total'),
+        btnFinalizar: document.getElementById('btn-finalizar'),
+        btnLimpar: document.getElementById('btn-limpar'),
+        cartBadge: document.getElementById('cart-badge'),
+        btnMenuToggle: document.getElementById('btn-menu-toggle'),
+        btnCartToggle: document.getElementById('btn-cart-toggle'),
+        menuSidebar: document.getElementById('menu-sidebar'),
+        cartSidebar: document.getElementById('cart-sidebar'),
+        sidebarOverlay: document.getElementById('sidebar-overlay'),
+        loadingOverlay: document.getElementById('loading-overlay'),
+        timerElement: document.getElementById('timer-inatividade'),
+        timerSegundos: document.getElementById('timer-segundos'),
+        estoqueModal: document.getElementById('estoque-modal'),
+        estoqueLista: document.getElementById('estoque-lista'),
+        btnFecharModal: document.getElementById('btn-fechar-modal')
+    };
+
+    const formatarMoeda = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const mostrarLoading = () => elements.loadingOverlay.classList.remove('hidden');
+    const esconderLoading = () => elements.loadingOverlay.classList.add('hidden');
+
+    // ==================== HELPERS DE SANITIZAÇÃO ====================
+    
+    function sanitizarTexto(texto) {
+        const div = document.createElement('div');
+        div.textContent = texto;
+        return div.innerHTML;
+    }
+    
+    // ==================== MODAL DE ERRO DE ESTOQUE ====================
+    
+    function mostrarErroEstoque(faltantes, mensagem) {
+        elements.estoqueLista.innerHTML = '';
+        
+        if (faltantes && faltantes.length > 0) {
+            faltantes.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'bg-white border-l-4 border-red-500 p-3 mb-2 rounded';
+                
+                const titulo = document.createElement('p');
+                titulo.className = 'font-bold text-gray-800';
+                titulo.textContent = item.item || 'Item';
+                
+                const info = document.createElement('p');
+                info.className = 'text-sm text-gray-600 mt-1';
+                if (item.motivo) {
+                    info.textContent = item.motivo;
+                } else if (item.disponivel !== undefined) {
+                    info.textContent = `Disponível: ${item.disponivel} | Solicitado: ${item.solicitado}`;
+                }
+                
+                div.appendChild(titulo);
+                if (info.textContent) div.appendChild(info);
+                
+                elements.estoqueLista.appendChild(div);
+            });
+        } else {
+            const p = document.createElement('p');
+            p.className = 'text-gray-600';
+            p.textContent = mensagem || 'Alguns itens não estão mais disponíveis.';
+            elements.estoqueLista.appendChild(p);
+        }
+        
+        elements.estoqueModal.classList.remove('hidden');
+        clearTimeout(timeoutInatividade);
+        clearInterval(intervaloTimer);
+    }
+    
+    elements.btnFecharModal.addEventListener('click', () => {
+        elements.estoqueModal.classList.add('hidden');
+        iniciarTimeout();
+    });
+    
+    elements.estoqueModal.addEventListener('click', (e) => {
+        if (e.target === elements.estoqueModal) {
+            elements.estoqueModal.classList.add('hidden');
+            iniciarTimeout();
+        }
+    });
+
+    // ==================== CONFIGURAÇÕES E TIMEOUT ====================
+    
+    async function carregarConfiguracoes() {
+        try {
+            const response = await fetch(CONFIG_API_URL);
+            if (response.ok) {
+                const configs = await response.json();
+                TIMEOUT_TOTAL = parseInt(configs.timeout_totem?.valor || 120);
+                MOSTRAR_TIMER_APOS = parseInt(configs.mostrar_timer_apos?.valor || 30);
+                console.log(`⏱️ Timeout: ${TIMEOUT_TOTAL}s | Timer: ${MOSTRAR_TIMER_APOS}s`);
+            } else {
+                console.warn('⚠️ Não foi possível carregar configs, usando padrão');
+            }
+        } catch (error) {
+            console.warn('⚠️ Erro ao carregar configs, usando padrão:', error);
+        }
+        iniciarTimeout();
+    }
+
+    function iniciarTimeout() {
+        segundosRestantes = TIMEOUT_TOTAL;
+        clearTimeout(timeoutInatividade);
+        clearInterval(intervaloTimer);
+        
+        timeoutInatividade = setTimeout(() => voltarParaInicio(), TIMEOUT_TOTAL * 1000);
+        
+        intervaloTimer = setInterval(() => {
+            segundosRestantes--;
+            const mostrarTimer = (TIMEOUT_TOTAL - segundosRestantes) >= MOSTRAR_TIMER_APOS;
+            
+            if (mostrarTimer) {
+                elements.timerSegundos.textContent = segundosRestantes;
+                elements.timerElement.classList.add('show');
+                
+                if (segundosRestantes <= 10) {
+                    elements.timerElement.classList.remove('warning');
+                    elements.timerElement.classList.add('critical');
+                } else if (segundosRestantes <= 20) {
+                    elements.timerElement.classList.add('warning');
+                    elements.timerElement.classList.remove('critical');
+                } else {
+                    elements.timerElement.classList.remove('warning', 'critical');
+                }
+            }
+            
+            if (segundosRestantes <= 0) clearInterval(intervaloTimer);
+        }, 1000);
+    }
+
+    function resetarTimeout() {
+        iniciarTimeout();
+        elements.timerElement.classList.remove('show', 'warning', 'critical');
+    }
+
+    function voltarParaInicio() {
+        clearTimeout(timeoutInatividade);
+        clearInterval(intervaloTimer);
+        localStorage.removeItem('tipoPedido');
+        localStorage.removeItem('carrinhoParaAcompanhamentos');
+        localStorage.removeItem('pedidoParaFinalizar');
+        window.location.href = '/index.html';
+    }
+
+    // ==================== CARRINHO ====================
+    
+    function adicionarAoCarrinho(produtoId, produtoNome, preco, categoria) {
+        const existe = carrinho.find(i => i.produto === produtoNome && !i.adicionais);
+        if (existe) {
+            existe.quantidade++;
+        } else {
+            // ✅ Envia tanto ID quanto nome para compatibilidade
+            carrinho.push({
+                produto_id: produtoId,
+                produto: produtoNome,
+                preco: preco,
+                quantidade: 1,
+                categoria: categoria
+            });
+        }
+        renderizarCarrinho();
+    }
+
+    function removerDoCarrinho(index) {
+        carrinho.splice(index, 1);
+        renderizarCarrinho();
+    }
+
+    function alterarQuantidade(index, delta) {
+        carrinho[index].quantidade += delta;
+        if (carrinho[index].quantidade <= 0) {
+            removerDoCarrinho(index);
+        } else {
+            renderizarCarrinho();
+        }
+    }
+
+    function renderizarCarrinho() {
+        elements.carrinhoItens.innerHTML = '';
+        
+        if (carrinho.length === 0) {
+            const p = document.createElement('p');
+            p.className = 'text-gray-400';
+            p.textContent = 'Seu carrinho está vazio.';
+            elements.carrinhoItens.appendChild(p);
+            elements.carrinhoTotal.textContent = formatarMoeda(0);
+            elements.cartBadge.classList.add('hidden');
+            elements.btnFinalizar.disabled = true;
+            return;
+        }
+
+        let total = 0;
+        
+        carrinho.forEach((item, index) => {
+            const div = document.createElement('div');
+            div.className = 'bg-gray-50 p-3 rounded-lg mb-2';
+            
+            const header = document.createElement('div');
+            header.className = 'flex justify-between items-start mb-2';
+            
+            const nome = document.createElement('span');
+            nome.className = 'font-semibold text-gray-800';
+            nome.textContent = item.produto;
+            
+            const btnRemover = document.createElement('button');
+            btnRemover.className = 'text-red-500 hover:text-red-700 text-sm';
+            btnRemover.innerHTML = '<i class="fas fa-trash"></i>';
+            btnRemover.onclick = () => removerDoCarrinho(index);
+            
+            header.appendChild(nome);
+            header.appendChild(btnRemover);
+            
+            const controles = document.createElement('div');
+            controles.className = 'flex justify-between items-center';
+            
+            const qtdControles = document.createElement('div');
+            qtdControles.className = 'flex items-center gap-2';
+            
+            const btnMenos = document.createElement('button');
+            btnMenos.className = 'btn-qty bg-gray-200 hover:bg-gray-300 text-gray-700';
+            btnMenos.textContent = '-';
+            btnMenos.onclick = () => alterarQuantidade(index, -1);
+            
+            const qtdSpan = document.createElement('span');
+            qtdSpan.className = 'text-gray-700 font-bold min-w-[30px] text-center';
+            qtdSpan.textContent = item.quantidade;
+            
+            const btnMais = document.createElement('button');
+            btnMais.className = 'btn-qty bg-pink-500 hover:bg-pink-600 text-white';
+            btnMais.textContent = '+';
+            btnMais.onclick = () => alterarQuantidade(index, 1);
+            
+            qtdControles.appendChild(btnMenos);
+            qtdControles.appendChild(qtdSpan);
+            qtdControles.appendChild(btnMais);
+            
+            const preco = document.createElement('span');
+            preco.className = 'text-pink-500 font-bold';
+            preco.textContent = formatarMoeda(item.preco * item.quantidade);
+            
+            controles.appendChild(qtdControles);
+            controles.appendChild(preco);
+            
+            div.appendChild(header);
+            div.appendChild(controles);
+            
+            elements.carrinhoItens.appendChild(div);
+            total += item.preco * item.quantidade;
+        });
+
+        elements.carrinhoTotal.textContent = formatarMoeda(total);
+        elements.cartBadge.textContent = carrinho.length;
+        elements.cartBadge.classList.remove('hidden');
+        elements.btnFinalizar.disabled = false;
+    }
+
+    // ==================== EVENT LISTENERS ====================
+    
+    elements.grid.addEventListener('click', (e) => {
+        const card = e.target.closest('.produto-card');
+        if (!card) return;
+        
+        const produtoId = parseInt(card.dataset.produtoId);
+        const categoria = card.dataset.categoria;
+        const produto = menuData[categoria]?.find(p => p.id === produtoId);
+        
+        if (produto) {
+            adicionarAoCarrinho(produto.id, produto.nome, produto.preco, categoria);
+        }
+    });
+
+    elements.btnLimpar.addEventListener('click', () => {
+        if (confirm('Deseja limpar todo o carrinho?')) {
+            carrinho = [];
+            renderizarCarrinho();
+        }
+    });
+
+    elements.btnFinalizar.addEventListener('click', () => {
+        // ✅ Validação: carrinho não pode estar vazio
+        if (carrinho.length === 0) {
+            alert('Seu carrinho está vazio. Adicione produtos antes de finalizar.');
+            return;
+        }
+        
+        const tipoPedido = localStorage.getItem('tipoPedido');
+        if (!tipoPedido) {
+            alert('Erro: tipo de pedido não encontrado.');
+            window.location.href = '/pagina2.html';
+            return;
+        }
+        
+        // Salva carrinho para próxima etapa
+        localStorage.setItem('carrinhoParaAcompanhamentos', JSON.stringify({
+            carrinho: carrinho,
+            tipo: tipoPedido
+        }));
+        
+        clearTimeout(timeoutInatividade);
+        clearInterval(intervaloTimer);
+        window.location.href = '/acompanhamentos.html';
+    });
+
+    elements.btnMenuToggle.addEventListener('click', (e) => { 
+        e.stopPropagation(); 
+        elements.cartSidebar.classList.remove('open'); 
+        elements.menuSidebar.classList.toggle('open'); 
+        elements.sidebarOverlay.classList.toggle('hidden'); 
+    });
+
+    elements.btnCartToggle.addEventListener('click', (e) => { 
+        e.stopPropagation(); 
+        elements.menuSidebar.classList.remove('open'); 
+        elements.cartSidebar.classList.toggle('open'); 
+        elements.sidebarOverlay.classList.toggle('hidden'); 
+    });
+
+    elements.sidebarOverlay.addEventListener('click', () => {
+        elements.menuSidebar.classList.remove('open');
+        elements.cartSidebar.classList.remove('open');
+        elements.sidebarOverlay.classList.add('hidden');
+    });
+    
+    elements.menuList.addEventListener('click', (e) => { 
+        if(e.target.classList.contains('menu-item') && window.innerWidth < 1024) {
+            elements.menuSidebar.classList.remove('open');
+            elements.cartSidebar.classList.remove('open');
+            elements.sidebarOverlay.classList.add('hidden');
+        }
+    });
+
+    ['click', 'touchstart', 'scroll'].forEach(event => document.addEventListener(event, resetarTimeout));
+
+    // ==================== RENDERIZAÇÃO ====================
+    
+    function atualizarGrid(categoria) {
+        elements.headerTitle.textContent = categoria;
+        const produtos = menuData[categoria] || [];
+        elements.grid.innerHTML = '';
+        
+        if (produtos.length === 0) {
+            const p = document.createElement('p');
+            p.className = 'text-gray-500 col-span-full text-center';
+            p.textContent = 'Nenhum produto disponível nesta categoria.';
+            elements.grid.appendChild(p);
+            return;
+        }
+
+        produtos.forEach(produto => {
+            const card = document.createElement('div');
+            card.className = 'produto-card bg-white rounded-lg shadow-md overflow-hidden transform hover:scale-105 transition-transform duration-200 cursor-pointer flex flex-col';
+            card.dataset.produtoId = produto.id;
+            card.dataset.categoria = categoria;
+
+            // Imagem
+            if (produto.imagem_path) {
+                const img = document.createElement('img');
+                img.src = `/${produto.imagem_path}`;
+                img.alt = produto.nome;
+                img.className = 'w-full h-40 object-cover pointer-events-none';
+                card.appendChild(img);
+            } else {
+                const placeholder = document.createElement('div');
+                placeholder.className = 'w-full h-40 bg-gray-200 flex items-center justify-center text-gray-400 pointer-events-none';
+                placeholder.innerHTML = '<i class="fas fa-ice-cream text-5xl"></i>';
+                card.appendChild(placeholder);
+            }
+            
+            // Conteúdo
+            const conteudo = document.createElement('div');
+            conteudo.className = 'p-4 flex flex-col flex-grow pointer-events-none';
+            
+            const nome = document.createElement('span');
+            nome.className = 'block font-semibold flex-grow';
+            nome.textContent = produto.nome;
+            
+            const preco = document.createElement('span');
+            preco.className = 'block font-bold text-pink-500 mt-2 text-lg';
+            preco.textContent = formatarMoeda(produto.preco);
+            
+            conteudo.appendChild(nome);
+            conteudo.appendChild(preco);
+            card.appendChild(conteudo);
+            
+            elements.grid.appendChild(card);
+        });
+    }
+
+    function popularCategorias() {
+        elements.menuList.innerHTML = '';
+        const categoriasComProdutos = Object.keys(menuData).filter(cat => menuData[cat].length > 0);
+        
+        if (categoriasComProdutos.length === 0) {
+            const p = document.createElement('p');
+            p.className = 'p-4 text-center text-gray-400';
+            p.textContent = 'Nenhuma categoria disponível';
+            elements.menuList.appendChild(p);
+            return;
+        }
+        
+        categoriasComProdutos.forEach(categoria => {
+            const item = document.createElement('li');
+            item.className = 'menu-item p-4 text-gray-700 text-center hover:bg-gray-100 cursor-pointer transition-all duration-150';
+            item.textContent = categoria;
+            item.addEventListener('click', () => {
+                elements.menuList.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                atualizarGrid(categoria);
+            });
+            elements.menuList.appendChild(item);
+        });
+    }
+
+    // ==================== INICIALIZAÇÃO ====================
+    
+    async function iniciarTotem() {
+        mostrarLoading();
+        
+        // Restaura carrinho preservando TODAS as informações
+        const carrinhoSalvo = localStorage.getItem('carrinhoParaAcompanhamentos');
+        if (carrinhoSalvo) {
+            try {
+                const dados = JSON.parse(carrinhoSalvo);
+                carrinho = dados.carrinho || [];
+                console.log(`✅ Carrinho restaurado: ${carrinho.length} itens`);
+            } catch (error) {
+                console.error('Erro ao restaurar carrinho:', error);
+                carrinho = [];
+                localStorage.removeItem('carrinhoParaAcompanhamentos');
+            }
+        } else {
+            carrinho = [];
+        }
+        
+        localStorage.removeItem('pedidoParaFinalizar');
+        
+        const tipoPedido = localStorage.getItem('tipoPedido');
+        if (!tipoPedido) {
+            esconderLoading();
+            alert("Selecione o tipo de pedido.");
+            window.location.href = '/pagina2.html';
+            return;
+        }
+        
+        try {
+            const response = await fetch(API_URL);
+            if (!response.ok) throw new Error(`Erro: ${response.statusText}`);
+            const dados = await response.json();
+            menuData = dados.menu;
+            adicionalCategoriasData = dados.adicional_categorias;
+            
+            Object.keys(menuData).forEach(cat => {
+                if (menuData[cat].length === 0) delete menuData[cat];
+            });
+            
+            if (Object.keys(menuData).length === 0) {
+                elements.headerTitle.textContent = "Desculpe";
+                elements.grid.innerHTML = '<p class="col-span-full text-center text-gray-500 text-xl">Não há produtos disponíveis no momento.</p>';
+                elements.menuList.innerHTML = '<p class="p-4 text-center text-gray-400">Nenhum produto</p>';
+                esconderLoading();
+                return;
+            }
+            
+            popularCategorias();
+            if (elements.menuList.firstChild?.classList.contains('menu-item')) {
+                elements.menuList.firstChild.click();
+            }
+            renderizarCarrinho();
+            await carregarConfiguracoes();
+            
+        } catch (error) {
+            console.error("Erro:", error);
+            elements.headerTitle.textContent = "Erro de Conexão";
+            const p = document.createElement('p');
+            p.className = 'col-span-full text-center text-red-500';
+            p.textContent = 'Não foi possível conectar ao servidor.';
+            elements.grid.innerHTML = '';
+            elements.grid.appendChild(p);
+            elements.menuList.innerHTML = '';
+        } finally {
+            esconderLoading();
+        }
+    }
+
+    iniciarTotem();
+    console.log('🍦 Totem com suporte a IDs e tratamento de estoque!');
+</script>
+</body>
+</html>

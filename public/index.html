@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TudBom - Bem-vindo</title>
+  <style>
+    /* --- Reset e Configurações Básicas --- */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f0f0f0;
+      color: #333;
+    }
+
+    /* Partículas flutuantes de fundo */
+    .background-animation {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+      overflow: hidden;
+      background-color: #f0f0f0;
+    }
+
+    .particle {
+      position: absolute;
+      background: rgba(229, 57, 53, 0.1);
+      border-radius: 50%;
+      animation: float 20s infinite ease-in-out;
+    }
+
+    @keyframes float {
+      0%, 100% {
+        transform: translateY(0) translateX(0) scale(1);
+        opacity: 0.3;
+      }
+      50% {
+        transform: translateY(-100px) translateX(50px) scale(1.5);
+        opacity: 0.6;
+      }
+    }
+
+    /* Botão admin invisível */
+    #admin-button {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 80px;
+      height: 80px;
+      background-color: transparent;
+      z-index: 100;
+      cursor: pointer;
+      border: none;
+      outline: none;
+      transition: background-color 0.3s ease;
+    }
+    
+    #admin-button:hover {
+      background-color: rgba(229, 57, 53, 0.05);
+    }
+    
+    /* Link principal */
+    .main-link {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    /* Container Principal - Ajustado para caber na tela */
+    .container {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100%;
+      text-align: center;
+      pointer-events: none;
+    }
+    
+    .container > * {
+      pointer-events: auto;
+    }
+
+    /* Cabeçalho com animação de entrada */
+    .header {
+      padding: 20px;
+      flex-shrink: 0;
+      animation: slideDown 1s ease-out;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-50px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .logo {
+      width: 150px;
+      height: auto;
+      margin-bottom: 10px;
+      filter: drop-shadow(0 5px 15px rgba(0, 0, 0, 0.2));
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        transform: scale(1);
+      }
+      50% {
+        transform: scale(1.05);
+      }
+    }
+
+    .welcome {
+      font-size: 2rem;
+      color: #e53935;
+      font-weight: bold;
+      text-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+      letter-spacing: 2px;
+      animation: glow 2s ease-in-out infinite;
+    }
+
+    @keyframes glow {
+      0%, 100% {
+        text-shadow: 0 3px 10px rgba(0, 0, 0, 0.1),
+                     0 0 15px rgba(229, 57, 53, 0.3);
+      }
+      50% {
+        text-shadow: 0 3px 10px rgba(0, 0, 0, 0.1),
+                     0 0 25px rgba(229, 57, 53, 0.5),
+                     0 0 35px rgba(229, 57, 53, 0.3);
+      }
+    }
+
+    /* Área de Imagens - Ajustada para não ultrapassar a tela */
+    .main-content {
+      flex-grow: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      animation: fadeIn 1.5s ease-out 0.5s both;
+      overflow: hidden;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: scale(0.9);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    .image-container {
+      position: relative;
+      width: 100%;
+      max-width: 600px;
+      max-height: 100%;
+    }
+
+    .image-area {
+      position: relative;
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 15px 50px rgba(0, 0, 0, 0.3);
+      transition: transform 0.3s ease;
+    }
+
+    .image-area:hover {
+      transform: translateY(-5px) scale(1.02);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    }
+
+    .image-area img {
+      width: 100%;
+      height: auto;
+      display: block;
+      transition: opacity 1.5s ease-in-out;
+    }
+
+    /* Brilho decorativo ao redor da imagem */
+    .image-area::before {
+      content: '';
+      position: absolute;
+      top: -2px;
+      left: -2px;
+      right: -2px;
+      bottom: -2px;
+      background: linear-gradient(45deg, #e53935, #ff6b6b, #e53935, #c62828);
+      border-radius: 20px;
+      z-index: -1;
+      opacity: 0.5;
+      filter: blur(10px);
+      animation: rotateBorder 4s linear infinite;
+    }
+
+    @keyframes rotateBorder {
+      0% { filter: blur(10px) hue-rotate(0deg); }
+      100% { filter: blur(10px) hue-rotate(360deg); }
+    }
+
+    /* Footer estilizado - Ajustado */
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: linear-gradient(135deg, #e53935 0%, #c62828 100%);
+      color: white;
+      padding: 15px 25px;
+      cursor: pointer;
+      transition: all 0.4s ease;
+      box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.2);
+      position: relative;
+      overflow: hidden;
+      animation: slideUp 1s ease-out 0.8s both;
+      flex-shrink: 0;
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(50px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .footer::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+      transition: left 0.5s ease;
+    }
+
+    .footer:hover::before {
+      left: 100%;
+    }
+
+    .footer:hover {
+      background: linear-gradient(135deg, #c62828 0%, #b71c1c 100%);
+      transform: translateY(-3px);
+      box-shadow: 0 -8px 25px rgba(0, 0, 0, 0.3);
+    }
+
+    .footer-logo {
+      height: 40px;
+      width: auto;
+      filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.3));
+      transition: transform 0.3s ease;
+    }
+
+    .footer:hover .footer-logo {
+      transform: rotate(-10deg) scale(1.1);
+    }
+
+    .footer-text {
+      text-align: center;
+      flex-grow: 1;
+    }
+
+    .footer-text p {
+      line-height: 1.2;
+      font-weight: bold;
+      font-size: 1rem;
+      text-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    }
+
+    .play-button {
+      font-size: 24px;
+      transition: transform 0.3s ease;
+      filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.3));
+    }
+
+    .footer:hover .play-button {
+      transform: scale(1.2) translateX(3px);
+    }
+
+    /* Responsividade Mobile */
+    @media (max-width: 768px) {
+      .header {
+        padding: 15px;
+      }
+
+      .welcome {
+        font-size: 1.8rem;
+      }
+
+      .logo {
+        width: 120px;
+      }
+
+      .main-content {
+        padding: 15px;
+      }
+
+      .footer {
+        padding: 12px 20px;
+      }
+
+      .footer-logo {
+        height: 35px;
+      }
+
+      .footer-text p {
+        font-size: 0.9rem;
+      }
+
+      .play-button {
+        font-size: 20px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .header {
+        padding: 10px;
+      }
+
+      .welcome {
+        font-size: 1.5rem;
+        letter-spacing: 1px;
+      }
+
+      .logo {
+        width: 100px;
+      }
+
+      .main-content {
+        padding: 10px;
+      }
+
+      .footer {
+        padding: 10px 15px;
+      }
+
+      .footer-logo {
+        height: 30px;
+      }
+
+      .footer-text p {
+        font-size: 0.85rem;
+        line-height: 1.1;
+      }
+
+      .play-button {
+        font-size: 18px;
+      }
+    }
+
+    /* Ajuste para telas muito pequenas */
+    @media (max-height: 600px) {
+      .header {
+        padding: 10px;
+      }
+
+      .logo {
+        width: 80px;
+        margin-bottom: 5px;
+      }
+
+      .welcome {
+        font-size: 1.3rem;
+      }
+
+      .main-content {
+        padding: 10px;
+      }
+
+      .footer {
+        padding: 8px 15px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  
+  <!-- Animação de fundo com partículas -->
+  <div class="background-animation" id="particles"></div>
+
+  <!-- Botão invisível para admin -->
+  <button id="admin-button" onclick="window.location.href='/login'" aria-label="Acessar painel administrativo"></button>
+
+  <!-- Link principal -->
+  <a href="pagina2.html" class="main-link">
+    <div class="container">
+      <header class="header">
+        <img src="/assets/logo-red.png" alt="Logo TudBom" class="logo" />
+        <h1 class="welcome">BEM-VINDO</h1>
+      </header>
+
+      <main class="main-content">
+        <div class="image-container">
+          <div class="image-area">
+            <img id="image-loop" src="assets/loop1.jpg" alt="Loop de imagens" />
+          </div>
+        </div>
+      </main>
+
+      <footer class="footer">
+        <img src="assets/logo-white.png" alt="Logo TudBom Branco" class="footer-logo" />
+        <div class="footer-text">
+          <p>Faça seu pedido</p>
+          <p>clicando na tela</p>
+        </div>
+        <div class="play-button">▶</div>
+      </footer>
+
+    </div>
+  </a>
+
+  <script src="script.js"></script>
+  
+  <script>
+    // Cria partículas flutuantes no fundo
+    const particlesContainer = document.getElementById('particles');
+    const particleCount = 15;
+
+    for (let i = 0; i < particleCount; i++) {
+      const particle = document.createElement('div');
+      particle.className = 'particle';
+      
+      const size = Math.random() * 60 + 20;
+      particle.style.width = `${size}px`;
+      particle.style.height = `${size}px`;
+      particle.style.left = `${Math.random() * 100}%`;
+      particle.style.top = `${Math.random() * 100}%`;
+      particle.style.animationDelay = `${Math.random() * 20}s`;
+      particle.style.animationDuration = `${Math.random() * 10 + 15}s`;
+      
+      particlesContainer.appendChild(particle);
+    }
+    // ==================== LIMPAR DADOS AO INICIAR ====================
+// ✅ Limpa todos os dados do localStorage ao entrar na página inicial
+localStorage.removeItem('tipoPedido');
+localStorage.removeItem('carrinhoParaAcompanhamentos');
+localStorage.removeItem('pedidoParaFinalizar');
+console.log('🧹 LocalStorage limpo ao iniciar');
+  </script>
+  
+</body>
+
+</html>

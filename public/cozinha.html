@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cozinha - Controle de Pedidos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        .pedido-novo { animation: slideIn 0.4s ease-out; }
+        @keyframes flashBg { 0%, 100% { background-color: #1f2937; } 50% { background-color: #fef3c7; } }
+        body.flash-notify { animation: flashBg 0.6s ease-in-out; }
+        ::-webkit-scrollbar { width: 10px; }
+        ::-webkit-scrollbar-track { background: #374151; }
+        ::-webkit-scrollbar-thumb { background: #6b7280; border-radius: 5px; }
+        ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+        @keyframes pulseSlow {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+            50% { transform: scale(1.02); box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+        }
+        .pedido-aguardando { animation: pulseSlow 2s infinite; }
+        .btn-loading { position: relative; pointer-events: none; opacity: 0.6; }
+        .btn-loading::after {
+            content: ""; position: absolute; width: 16px; height: 16px; top: 50%; left: 50%;
+            margin-left: -8px; margin-top: -8px; border: 2px solid #ffffff; border-radius: 50%;
+            border-top-color: transparent; animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .status-reconectando .status-dot { animation: pulse 1s infinite; }
+    </style>
+</head>
+<body class="bg-gray-800 text-white">
+    
+    <header class="bg-gray-900 border-b border-gray-700 p-4 sticky top-0 z-10 shadow-lg">
+        <div class="flex justify-between items-center max-w-7xl mx-auto">
+            <div>
+                <h1 class="text-2xl font-bold text-yellow-400">🍦 Cozinha - Controle de Pedidos</h1>
+                <p class="text-sm text-gray-400 mt-1">
+                    <span id="status-conexao" class="inline-flex items-center">
+                        <span class="status-dot w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></span>Conectado
+                    </span>
+                    <span class="ml-4">Última atualização: <span id="ultima-atualizacao">--:--:--</span></span>
+                </p>
+            </div>
+            <div class="text-right">
+                <div class="text-3xl font-bold text-yellow-400" id="total-preparando">0</div>
+                <div class="text-xs text-gray-400">EM PREPARO</div>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex flex-col md:flex-row h-[calc(100vh-88px)]">
+        
+        <div class="w-full md:w-1/2 bg-gray-800 p-4 border-r border-gray-700 overflow-y-auto">
+            <h2 class="text-3xl font-bold text-center text-yellow-400 mb-4 sticky top-0 bg-gray-800 py-2 z-10 border-b border-gray-700">
+                🔥 EM PREPARO
+            </h2>
+            <div id="preparando-container" class="space-y-4">
+                <div class="text-center mt-20">
+                    <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400"></div>
+                    <p class="text-gray-500 mt-4">Carregando pedidos...</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="w-full md:w-1/2 bg-gray-900 p-4 overflow-y-auto">
+            <h2 class="text-3xl font-bold text-center text-green-400 mb-4 sticky top-0 bg-gray-900 py-2 z-10 border-b border-gray-700">
+                ✅ PRONTOS PARA RETIRADA
+            </h2>
+            <div id="prontos-container" class="space-y-4">
+                <p class="text-gray-500 text-center mt-20 text-lg">Nenhum pedido pronto ainda.</p>
+            </div>
+        </div>
+    </main>
+
+    <div id="toast" class="hidden fixed top-20 right-4 bg-yellow-400 text-gray-900 px-6 py-3 rounded-lg shadow-2xl font-bold text-lg z-50 transform transition-transform">
+        🔔 Novo pedido recebido!
+    </div>
+
+<script>
+    // ==================== CONFIGURAÇÕES ====================
+    const CONFIG = {
+        INTERVALO_ATUALIZACAO: 5000,
+        TEMPO_TOAST: 3000,
+        TEMPO_DESTACAR_PRONTO: 300000,
+        MAX_TENTATIVAS_POLLING: 3,
+        DELAY_INICIAL_RETRY: 600,
+        MAX_DELAY_RETRY: 5000
+    };
+    
+    // ==================== ESTADO GLOBAL ====================
+    let ultimoPedidoCount = 0;
+    let pedidosAtuais = new Set();
+    let ultimaAtualizacao = null;
+    let isUpdating = false;
+    let tentativaAtual = 0;
+    let intervalId = null;
+    let timeoutRetryId = null;
+    
+    const preparandoContainer = document.getElementById('preparando-container');
+    const prontosContainer = document.getElementById('prontos-container');
+    const statusConexao = document.getElementById('status-conexao');
+    const ultimaAtualizacaoEl = document.getElementById('ultima-atualizacao');
+    const totalPreparandoEl = document.getElementById('total-preparando');
+    const toast = document.getElementById('toast');
+    
+    const audioNotificacao = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZUA0PVKzn77BdGAg+ltryxnMpBSh+zPLaizsIGGS57OihUhELTKXh8bllHAU2jdXzz3osBiZzxe/clEIJElyx6OyrWBgJPJTY8sFuJQUuhM/z1YU2Bhxqvu7mnVIPDlOq5O+zYBoGPJLX88p2KwUme8rx3I4+CRVbsOjrqVYUCUyk4fG/bCIFMIXO89eCNQYebr7v5ppQDg9Tq+bwsmAbBz2R1vPJdiwFJ3vK8dqOPQkVXLDo7KlWFQlNpOHxwm4iBDCFzvPXgzYGHm6+7+abUA4PU6vm8LJgGgc9kdbyyna');
+    
+    // ==================== HELPERS ====================
+    
+    const formatarHora = (dataString) => {
+        try {
+            return new Date(dataString).toLocaleTimeString('pt-BR', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        } catch {
+            return '--:--:--';
+        }
+    };
+
+    const atualizarStatusConexao = (estado, mensagem = null) => {
+        /**
+         * Estado: 'conectado' | 'desconectado' | 'reconectando'
+         */
+        const statusDot = statusConexao.querySelector('.status-dot');
+        
+        statusConexao.className = 'inline-flex items-center';
+        
+        if (estado === 'conectado') {
+            statusDot.className = 'status-dot w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse';
+            statusConexao.classList.add('text-green-400');
+            statusConexao.lastChild.textContent = 'Conectado';
+        } else if (estado === 'reconectando') {
+            statusDot.className = 'status-dot w-2 h-2 bg-yellow-400 rounded-full mr-2';
+            statusConexao.classList.add('text-yellow-400', 'status-reconectando');
+            statusConexao.lastChild.textContent = mensagem || 'Reconectando...';
+        } else {
+            statusDot.className = 'status-dot w-2 h-2 bg-red-400 rounded-full mr-2';
+            statusConexao.classList.add('text-red-400');
+            statusConexao.lastChild.textContent = mensagem || 'Desconectado';
+        }
+    };
+
+    const mostrarToast = () => {
+        toast.classList.remove('hidden');
+        toast.style.transform = 'translateX(0)';
+        setTimeout(() => {
+            toast.style.transform = 'translateX(400px)';
+            setTimeout(() => toast.classList.add('hidden'), 300);
+        }, CONFIG.TEMPO_TOAST);
+    };
+
+    const tocarNotificacao = () => {
+        audioNotificacao.play().catch(() => {
+            document.body.classList.add('flash-notify');
+            setTimeout(() => document.body.classList.remove('flash-notify'), 600);
+        });
+    };
+
+    const calcularTempoPronto = (dataHora) => {
+        const diffMs = new Date() - new Date(dataHora);
+        return Math.floor(diffMs / 60000);
+    };
+
+    // ==================== RETRY COM BACKOFF ====================
+    
+    async function fetchWithBackoff(url, opts = {}, maxTries = CONFIG.MAX_TENTATIVAS_POLLING) {
+        /**
+         * Faz fetch com retry e backoff exponencial.
+         */
+        let delay = CONFIG.DELAY_INICIAL_RETRY;
+        let lastError = null;
+        
+        for (let attempt = 1; attempt <= maxTries; attempt++) {
+            try {
+                const response = await fetch(url, opts);
+                
+                // Reseta contador de tentativas em sucesso
+                tentativaAtual = 0;
+                return response;
+                
+            } catch (error) {
+                lastError = error;
+                console.error(`❌ Tentativa ${attempt}/${maxTries} falhou:`, error.message);
+                
+                if (attempt < maxTries) {
+                    console.log(`⏳ Aguardando ${delay}ms antes de retry...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay = Math.min(delay * 2, CONFIG.MAX_DELAY_RETRY);
+                }
+            }
+        }
+        
+        throw lastError;
+    }
+
+    // ==================== BUSCA DE PEDIDOS ====================
+    
+    async function buscarPedidos() {
+        if (isUpdating) {
+            console.log('⏳ Atualização já em andamento...');
+            return;
+        }
+        
+        isUpdating = true;
+        
+        try {
+            // Atualiza status para "reconectando" se houve falhas anteriores
+            if (tentativaAtual > 0) {
+                atualizarStatusConexao('reconectando', `Reconectando (${tentativaAtual + 1}/${CONFIG.MAX_TENTATIVAS_POLLING})...`);
+            }
+            
+            // ✅ POLLING COM RETRY/BACKOFF
+            // public=false para uso interno (mostra cliente_nome)
+            const response = await fetchWithBackoff('/api/pedidos?status=recebido,pronto&public=false');
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const pedidos = await response.json();
+            
+            // ✅ SUCESSO: Reseta tentativas e atualiza UI
+            tentativaAtual = 0;
+            atualizarStatusConexao('conectado');
+            ultimaAtualizacao = new Date();
+            ultimaAtualizacaoEl.textContent = formatarHora(ultimaAtualizacao);
+            
+            // Detecta novos pedidos
+            const novosPedidosIds = new Set(pedidos.filter(p => {
+                // ✅ TRATA STATUS AUSENTE COMO "recebido"
+                const status = p.status || 'recebido';
+                return status === 'recebido';
+            }).map(p => p.id));
+            
+            const novosDetectados = [...novosPedidosIds].filter(id => !pedidosAtuais.has(id));
+            
+            if (novosDetectados.length > 0 && pedidosAtuais.size > 0) {
+                tocarNotificacao();
+                mostrarToast();
+            }
+            
+            pedidosAtuais = novosPedidosIds;
+            renderizarPedidos(pedidos);
+            
+            // Reinicia polling regular se estava em retry
+            if (!intervalId) {
+                iniciarPolling();
+            }
+            
+        } catch (error) {
+            console.error('❌ Erro ao buscar pedidos:', error);
+            
+            tentativaAtual++;
+            
+            // ✅ RECUPERAÇÃO AUTOMÁTICA COM BACKOFF
+            if (tentativaAtual < CONFIG.MAX_TENTATIVAS_POLLING) {
+                const delay = Math.min(CONFIG.DELAY_INICIAL_RETRY * Math.pow(2, tentativaAtual - 1), CONFIG.MAX_DELAY_RETRY);
+                atualizarStatusConexao('reconectando', `Reconectando em ${Math.floor(delay / 1000)}s...`);
+                
+                // Para polling regular e agenda retry
+                if (intervalId) {
+                    clearInterval(intervalId);
+                    intervalId = null;
+                }
+                
+                timeoutRetryId = setTimeout(() => {
+                    buscarPedidos();
+                }, delay);
+                
+            } else {
+                // Esgotou tentativas
+                atualizarStatusConexao('desconectado', 'Erro de conexão');
+                
+                // Mostra erro na UI se não há dados
+                if (preparandoContainer.children.length === 0 || preparandoContainer.querySelector('.text-center')) {
+                    mostrarErroConexao(error.message);
+                }
+                
+                // Reseta contador e tenta novamente após delay longo
+                setTimeout(() => {
+                    tentativaAtual = 0;
+                    buscarPedidos();
+                }, 10000); // 10 segundos
+            }
+            
+        } finally {
+            isUpdating = false;
+        }
+    }
+    
+    function mostrarErroConexao(mensagem) {
+        preparandoContainer.innerHTML = '';
+        
+        const div = document.createElement('div');
+        div.className = 'text-center mt-10 max-w-md mx-auto';
+        
+        const icone = document.createElement('p');
+        icone.className = 'text-5xl mb-4';
+        icone.textContent = '❌';
+        
+        const titulo = document.createElement('p');
+        titulo.className = 'text-red-400 text-lg mb-2';
+        titulo.textContent = 'Erro ao conectar';
+        
+        const msg = document.createElement('p');
+        msg.className = 'text-gray-500 text-sm mb-4';
+        msg.textContent = mensagem;
+        
+        const btnRetry = document.createElement('button');
+        btnRetry.className = 'bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg shadow transition-all';
+        btnRetry.textContent = 'Tentar Novamente';
+        btnRetry.onclick = () => {
+            tentativaAtual = 0;
+            buscarPedidos();
+        };
+        
+        div.appendChild(icone);
+        div.appendChild(titulo);
+        div.appendChild(msg);
+        div.appendChild(btnRetry);
+        
+        preparandoContainer.appendChild(div);
+    }
+    
+    function iniciarPolling() {
+        if (intervalId) {
+            clearInterval(intervalId);
+        }
+        intervalId = setInterval(buscarPedidos, CONFIG.INTERVALO_ATUALIZACAO);
+        console.log(`🔄 Polling iniciado: a cada ${CONFIG.INTERVALO_ATUALIZACAO / 1000}s`);
+    }
+
+    // ==================== RENDERIZAÇÃO ====================
+    
+    function renderizarPedidos(pedidos) {
+        // ✅ TRATA STATUS AUSENTE COMO "recebido"
+        const pedidosRecebidos = pedidos.filter(p => (p.status || 'recebido') === 'recebido');
+        const pedidosProntos = pedidos.filter(p => p.status === 'pronto');
+
+        totalPreparandoEl.textContent = pedidosRecebidos.length;
+
+        preparandoContainer.innerHTML = '';
+        if (pedidosRecebidos.length === 0) {
+            const div = document.createElement('div');
+            div.className = 'text-center mt-20';
+            
+            const p1 = document.createElement('p');
+            p1.className = 'text-gray-500 text-lg';
+            p1.textContent = '✨ Nenhum pedido no momento';
+            
+            const p2 = document.createElement('p');
+            p2.className = 'text-gray-600 text-sm mt-2';
+            p2.textContent = 'Aguardando pedidos...';
+            
+            div.appendChild(p1);
+            div.appendChild(p2);
+            preparandoContainer.appendChild(div);
+        } else {
+            pedidosRecebidos.forEach(pedido => {
+                preparandoContainer.appendChild(criarCardPedido(pedido, 'recebido'));
+            });
+        }
+        
+        prontosContainer.innerHTML = '';
+        if (pedidosProntos.length === 0) {
+            const div = document.createElement('div');
+            div.className = 'text-center mt-20';
+            
+            const p = document.createElement('p');
+            p.className = 'text-gray-500 text-lg';
+            p.textContent = '⏳ Aguardando pedidos prontos...';
+            
+            div.appendChild(p);
+            prontosContainer.appendChild(div);
+        } else {
+            pedidosProntos.forEach(pedido => {
+                prontosContainer.appendChild(criarCardPedido(pedido, 'pronto'));
+            });
+        }
+    }
+
+    function criarCardPedido(pedido, statusAtual) {
+        /**
+         * Cria card de pedido usando DOM API (seguro contra XSS).
+         */
+        const card = document.createElement('div');
+        card.className = 'bg-gray-700 rounded-lg p-4 shadow-lg hover:shadow-xl transition-shadow pedido-novo';
+        card.id = `pedido-${pedido.id}`;
+        card.dataset.pedidoId = pedido.id;
+
+        if (statusAtual === 'pronto') {
+            const tempoEspera = calcularTempoPronto(pedido.data_hora);
+            if (tempoEspera > 5) {
+                card.classList.add('pedido-aguardando', 'border-2', 'border-blue-400');
+            }
+        }
+
+        // Header do card
+        const header = document.createElement('div');
+        header.className = 'flex justify-between items-start mb-3 pb-3 border-b border-gray-600';
+        
+        const headerLeft = document.createElement('div');
+        
+        const titulo = document.createElement('h2');
+        titulo.className = 'text-2xl font-bold text-white mb-1';
+        titulo.textContent = `Pedido #${pedido.id}`;
+        
+        const horario = document.createElement('span');
+        horario.className = 'text-xs text-gray-400';
+        horario.textContent = `📅 ${formatarHora(pedido.data_hora)}`;
+        
+        headerLeft.appendChild(titulo);
+        headerLeft.appendChild(horario);
+        
+        const tipoLabel = document.createElement('span');
+        tipoLabel.className = pedido.tipo_pedido === 'viagem'
+            ? 'bg-orange-500 text-white text-xs font-bold px-3 py-1 rounded-full inline-flex items-center'
+            : 'bg-blue-500 text-white text-xs font-bold px-3 py-1 rounded-full inline-flex items-center';
+        tipoLabel.textContent = pedido.tipo_pedido === 'viagem' ? '🥡 VIAGEM' : '🍽️ AQUI';
+        
+        header.appendChild(headerLeft);
+        header.appendChild(tipoLabel);
+        card.appendChild(header);
+        
+        // Cliente
+        const cliente = document.createElement('p');
+        cliente.className = 'text-xl text-yellow-400 font-semibold mb-3 flex items-center';
+        cliente.textContent = `👤 ${pedido.cliente_nome}`;
+        card.appendChild(cliente);
+        
+        // Itens
+        const itensUl = document.createElement('ul');
+        itensUl.className = 'space-y-2 my-3 border-t border-b border-gray-600 py-3';
+        
+        pedido.itens.forEach(item => {
+            const li = document.createElement('li');
+            li.className = 'mb-3 pb-3 border-b border-gray-600 last:border-0';
+            
+            const itemHeader = document.createElement('div');
+            itemHeader.className = 'flex justify-between items-start';
+            
+            const itemNome = document.createElement('span');
+            itemNome.className = 'font-semibold text-base';
+            
+            const qtd = document.createElement('span');
+            qtd.className = 'font-bold text-yellow-400 mr-2';
+            qtd.textContent = `${item.quantidade}x`;
+            
+            itemNome.appendChild(qtd);
+            itemNome.appendChild(document.createTextNode(item.produto_nome));
+            
+            const itemPreco = document.createElement('span');
+            itemPreco.className = 'text-gray-300 font-bold';
+            itemPreco.textContent = `R$ ${(item.quantidade * item.valor_unitario).toFixed(2)}`;
+            
+            itemHeader.appendChild(itemNome);
+            itemHeader.appendChild(itemPreco);
+            li.appendChild(itemHeader);
+            
+            // Adicionais
+            if (item.adicionais && item.adicionais.length > 0) {
+                const adicionaisUl = document.createElement('ul');
+                adicionaisUl.className = 'mt-1 pl-6 space-y-1';
+                
+                item.adicionais.forEach(adicional => {
+                    const adLi = document.createElement('li');
+                    adLi.className = 'text-sm text-gray-300 italic flex items-center';
+                    
+                    const seta = document.createElement('span');
+                    seta.className = 'text-yellow-400 mr-2';
+                    seta.textContent = '›';
+                    
+                    const adQtd = document.createElement('span');
+                    adQtd.className = 'font-bold text-yellow-400 mr-1';
+                    adQtd.textContent = `${adicional.quantidade}x`;
+                    
+                    adLi.appendChild(seta);
+                    adLi.appendChild(adQtd);
+                    adLi.appendChild(document.createTextNode(adicional.adicional_nome));
+                    
+                    adicionaisUl.appendChild(adLi);
+                });
+                
+                li.appendChild(adicionaisUl);
+            }
+            
+            itensUl.appendChild(li);
+        });
+        
+        card.appendChild(itensUl);
+        
+        // Total
+        const totalDiv = document.createElement('div');
+        totalDiv.className = 'flex justify-between items-center text-lg font-bold mt-2';
+        
+        const totalLabel = document.createElement('span');
+        totalLabel.className = 'text-gray-300';
+        totalLabel.textContent = 'Total:';
+        
+        const totalValor = document.createElement('span');
+        totalValor.className = 'text-green-400 text-2xl';
+        totalValor.textContent = `R$ ${pedido.valor_total.toFixed(2)}`;
+        
+        totalDiv.appendChild(totalLabel);
+        totalDiv.appendChild(totalValor);
+        card.appendChild(totalDiv);
+        
+        // Botão de ação
+        if (statusAtual === 'recebido') {
+            const btn = document.createElement('button');
+            btn.className = 'btn-acao w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-lg text-lg mt-4 transition-all transform hover:scale-105 active:scale-95';
+            btn.dataset.id = pedido.id;
+            btn.dataset.status = 'pronto';
+            btn.textContent = '✓ Marcar como Pronto';
+            card.appendChild(btn);
+            
+        } else if (statusAtual === 'pronto') {
+            const btn = document.createElement('button');
+            btn.className = 'btn-acao w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 rounded-lg text-lg mt-4 transition-all transform hover:scale-105 active:scale-95';
+            btn.dataset.id = pedido.id;
+            btn.dataset.status = 'retirado';
+            btn.textContent = '📦 Pedido Retirado';
+            card.appendChild(btn);
+            
+            const tempoEspera = calcularTempoPronto(pedido.data_hora);
+            if (tempoEspera > 5) {
+                const aviso = document.createElement('p');
+                aviso.className = 'text-blue-400 text-sm text-center mt-2';
+                aviso.textContent = `⏰ Aguardando há ${tempoEspera} minutos`;
+                card.appendChild(aviso);
+            }
+        }
+        
+        return card;
+    }
+
+    // ==================== ATUALIZAÇÃO DE STATUS ====================
+    
+    async function atualizarStatusPedido(pedidoId, novoStatus) {
+        const button = document.querySelector(`#pedido-${pedidoId} .btn-acao`);
+        if (!button || button.disabled) return;
+        
+        button.classList.add('btn-loading');
+        button.disabled = true;
+        const textoOriginal = button.textContent;
+        button.textContent = '';
+        
+        try {
+            // ✅ PREPARA HEADERS COM X-CSRF-TOKEN
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            
+            const csrfToken = getCsrfToken();
+            if (csrfToken) {
+                headers['X-CSRF-Token'] = csrfToken;
+            }
+            
+            // ✅ POST COM RETRY
+            const response = await fetchWithBackoff(`/api/pedidos/${pedidoId}/status`, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({ status: novoStatus })
+            }, 2); // 2 tentativas para ações de usuário
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || 'Falha ao atualizar');
+            }
+            
+            // Animação de saída
+            const card = document.getElementById(`pedido-${pedidoId}`);
+            if (card) {
+                card.style.opacity = '0';
+                card.style.transform = 'scale(0.95)';
+                card.style.transition = 'all 0.3s ease-out';
+            }
+            
+            setTimeout(async () => {
+                await buscarPedidos();
+            }, 300);
+            
+        } catch (error) {
+            console.error(`❌ Erro ao marcar como ${novoStatus}:`, error);
+            
+            // Reabilita botão
+            button.classList.remove('btn-loading');
+            button.disabled = false;
+            button.textContent = textoOriginal;
+            
+            // Mostra erro no card
+            const card = document.getElementById(`pedido-${pedidoId}`);
+            if (card) {
+                const errorMsg = document.createElement('p');
+                errorMsg.className = 'text-red-400 text-sm text-center mt-2';
+                errorMsg.textContent = '❌ Erro ao atualizar. Tente novamente.';
+                card.appendChild(errorMsg);
+                setTimeout(() => errorMsg.remove(), 3000);
+            }
+        }
+    }
+
+    // ==================== UTILITÁRIO: CSRF TOKEN ====================
+    
+    function getCsrfToken() {
+        /**
+         * Obtém X-CSRF-Token de meta tag ou cookie.
+         */
+        const metaTag = document.querySelector('meta[name="csrf-token"]');
+        if (metaTag) {
+            return metaTag.getAttribute('content');
+        }
+        
+        const cookies = document.cookie.split(';');
+        for (let cookie of cookies) {
+            const [name, value] = cookie.trim().split('=');
+            if (name === 'csrf_token') {
+                return decodeURIComponent(value);
+            }
+        }
+        
+        return null;
+    }
+
+    // ==================== EVENT LISTENERS ====================
+    
+    document.body.addEventListener('click', (e) => {
+        const targetButton = e.target.closest('.btn-acao');
+        if (targetButton && !targetButton.disabled) {
+            atualizarStatusPedido(targetButton.dataset.id, targetButton.dataset.status);
+        }
+    });
+
+    // Atualiza ao voltar para a aba
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            buscarPedidos();
+        }
+    });
+
+    // Cleanup ao fechar
+    window.addEventListener('beforeunload', () => {
+        if (intervalId) clearInterval(intervalId);
+        if (timeoutRetryId) clearTimeout(timeoutRetryId);
+    });
+
+    // ==================== INICIALIZAÇÃO ====================
+    
+    buscarPedidos();
+    iniciarPolling();
+    
+    console.log('🍦 Sistema de Cozinha iniciado com polling robusto e X-CSRF-Token!');
+</script>
+</body>
+</html>

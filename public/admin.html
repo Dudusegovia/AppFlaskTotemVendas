@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Painel de Administração - Sorveteria Tudbom</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        .loading-overlay { background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); }
+        .spinner { border: 4px solid #f3f4f6; border-top: 4px solid #ec4899; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        html { scroll-behavior: smooth; }
+        input:invalid:not(:placeholder-shown) { border-color: #ef4444; background-color: #fef2f2; }
+        .image-preview { transition: all 0.3s ease; }
+        .image-preview:hover { transform: scale(1.05); }
+        .btn-delete { transition: all 0.2s ease; }
+        .btn-delete:hover { transform: scale(1.1); }
+        .modal-backdrop { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .modal-content { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-20px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        .estoque-baixo { background-color: #fef2f2; border-left: 4px solid #ef4444; }
+        .estoque-zero { opacity: 0.5; background-color: #f3f4f6; }
+        .estoque-input { width: 70px; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 4px; text-align: center; }
+        .estoque-input:focus { outline: none; border-color: #3b82f6; ring: 2px; ring-color: #3b82f6; }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div id="loading-overlay" class="hidden fixed inset-0 loading-overlay z-50 flex items-center justify-center">
+        <div class="bg-white p-8 rounded-lg shadow-2xl text-center">
+            <div class="spinner mx-auto mb-4"></div>
+            <p id="loading-text" class="text-xl font-bold text-gray-700">Processando...</p>
+        </div>
+    </div>
+
+    <div id="toast" class="hidden fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-2xl font-bold text-lg z-50 transform transition-transform">
+        <i class="fas fa-check-circle mr-2"></i>
+        <span id="toast-message">Operação realizada com sucesso!</span>
+    </div>
+
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+        <header class="mb-8 text-center relative">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">🍦 Painel de Administração</h1>
+            <p class="text-pink-500 font-semibold text-lg">Sorveteria Tudbom</p>
+            <div class="absolute top-0 right-0">
+                <a href="/logout" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors">
+                    <i class="fas fa-sign-out-alt mr-1"></i> Sair
+                </a>
+            </div>
+        </header>
+
+        <!-- Seção de Categorias de Adicionais -->
+        <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
+            <h2 class="text-3xl font-bold text-gray-800 mb-4 flex items-center">
+                <i class="fas fa-layer-group text-purple-500 mr-3"></i>
+                Gerenciar Categorias de Adicionais
+            </h2>
+            <p class="text-gray-600 mb-4 text-sm">
+                <i class="fas fa-info-circle mr-1"></i>
+                Crie categorias como "Frutas", "Coberturas", "Toppings" e adicione os itens com estoque.
+            </p>
+            <div id="adicionais-panel" class="space-y-6">
+                <div class="text-center py-8">
+                    <div class="spinner mx-auto mb-4"></div>
+                    <p class="text-gray-400">Carregando categorias...</p>
+                </div>
+            </div>
+            <form id="form-add-adicional-category" class="mt-6 flex flex-wrap gap-4 border-t pt-4">
+                <input id="new-adicional-category-name" type="text" placeholder="Nome da nova categoria (ex: Frutas)" 
+                       class="flex-grow p-3 border rounded-md focus:ring-2 focus:ring-purple-500" required minlength="2" maxlength="50">
+                <button type="submit" class="bg-purple-500 text-white font-bold py-3 px-6 rounded-md hover:bg-purple-600 transition-all transform hover:scale-105 active:scale-95">
+                    <i class="fas fa-plus-circle mr-2"></i>Criar Categoria
+                </button>
+            </form>
+        </section>
+
+        <!-- Seção de Menu Principal -->
+        <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
+            <h2 class="text-3xl font-bold text-gray-800 mb-4 flex items-center">
+                <i class="fas fa-utensils text-blue-500 mr-3"></i>
+                Gerenciar Menu Principal
+            </h2>
+            <p class="text-gray-600 mb-4 text-sm">
+                <i class="fas fa-info-circle mr-1"></i>
+                Crie categorias principais como "Açaí", "Sorvetes" e adicione produtos com estoque.
+            </p>
+            <form id="form-add-category" class="flex flex-wrap gap-4">
+                <input id="new-category-name" type="text" placeholder="Nome da nova categoria (ex: Açaí)" 
+                       class="flex-grow p-3 border rounded-md focus:ring-2 focus:ring-blue-500" required minlength="2" maxlength="50">
+                <button type="submit" class="bg-blue-500 text-white font-bold py-3 px-6 rounded-md hover:bg-blue-600 transition-all transform hover:scale-105 active:scale-95">
+                    <i class="fas fa-plus-circle mr-2"></i>Criar Categoria
+                </button>
+            </form>
+        </section>
+
+        <!-- Botão de salvar fixo -->
+        <div class="sticky top-4 z-10 text-center my-8">
+            <button id="save-all-changes" class="bg-green-500 text-white font-bold py-4 px-8 rounded-lg shadow-lg hover:bg-green-600 transition-all transform hover:scale-105 active:scale-95">
+                <i class="fas fa-save mr-2"></i> SALVAR CARDÁPIO
+            </button>
+            <p class="text-sm text-gray-500 mt-2">
+                <i class="fas fa-exclamation-triangle mr-1"></i>
+                Lembre-se de salvar após fazer alterações!
+            </p>
+        </div>
+        
+        <!-- Produtos por categoria -->
+        <main id="admin-panel" class="space-y-8">
+             <div class="text-center py-12">
+                <div class="spinner mx-auto mb-4"></div>
+                <p class="text-gray-400">Carregando menu...</p>
+             </div>
+        </main>
+
+        <!-- Modal de edição de produto -->
+        <div id="edit-product-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 modal-backdrop flex justify-center items-center z-50 p-4">
+            <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-2xl modal-content max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center mb-6 border-b pb-4">
+                    <h3 class="text-2xl font-bold text-gray-800">
+                        <i class="fas fa-edit text-pink-500 mr-2"></i>Editar Produto
+                    </h3>
+                    <button id="modal-edit-cancel" class="text-gray-400 hover:text-gray-600 text-2xl transition-colors">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block font-bold text-gray-700 mb-2"><i class="fas fa-tag mr-1"></i>Nome do Produto</label>
+                        <input type="text" id="modal-edit-nome" class="w-full p-3 border rounded-md focus:ring-2 focus:ring-pink-500" required minlength="2" maxlength="100">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-gray-700 mb-2"><i class="fas fa-dollar-sign mr-1"></i>Preço</label>
+                        <input type="number" step="0.01" min="0" id="modal-edit-preco" class="w-full p-3 border rounded-md focus:ring-2 focus:ring-pink-500" required>
+                    </div>
+                    <div>
+                        <label class="block font-bold text-gray-700 mb-2"><i class="fas fa-image mr-1"></i>Imagem</label>
+                        <div id="modal-current-image" class="mb-2"></div>
+                        <input type="file" id="modal-edit-imagem" class="w-full p-2 border rounded-md focus:ring-2 focus:ring-pink-500" accept="image/*">
+                        <p class="text-xs text-gray-500 mt-1"><i class="fas fa-info-circle mr-1"></i>JPG, PNG, GIF (máx. 5MB)</p>
+                    </div>
+                    <div id="modal-edit-adicionais-links" class="border-t pt-4">
+                        <label class="block font-bold text-gray-700 mb-3"><i class="fas fa-link mr-1"></i>Vincular Categorias de Adicionais</label>
+                        <p class="text-sm text-gray-500 mb-3">Selecione quais categorias estarão disponíveis.</p>
+                    </div>
+                </div>
+                <div class="flex gap-4 mt-6 border-t pt-6">
+                    <button id="modal-edit-cancel-2" class="w-full bg-gray-200 text-gray-700 py-3 rounded-lg hover:bg-gray-300 font-bold transition-colors">
+                        <i class="fas fa-times mr-2"></i>Cancelar
+                    </button>
+                    <button id="modal-edit-save" class="w-full bg-pink-500 text-white py-3 rounded-lg font-bold hover:bg-pink-600 transition-all transform hover:scale-105">
+                        <i class="fas fa-save mr-2"></i>Salvar
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Seção de Gerenciamento de Backups -->
+        <section class="mb-8 p-6 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-lg shadow-md border-2 border-emerald-200">
+            <h2 class="text-3xl font-bold text-gray-800 mb-4 flex items-center">
+                <i class="fas fa-database text-emerald-500 mr-3"></i>
+                Gerenciamento de Backups
+            </h2>
+            <p class="text-gray-600 mb-6 text-sm">
+                <i class="fas fa-info-circle mr-1"></i>
+                Sistema de backup automático ativo. Backups criados a cada 1 hora e mantidos por 2 dias.
+            </p>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="bg-white p-4 rounded-lg shadow-sm">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-semibold text-gray-600">Backups Salvos</span>
+                        <i class="fas fa-archive text-emerald-500"></i>
+                    </div>
+                    <div class="text-3xl font-bold text-gray-800" id="total-backups">--</div>
+                </div>
+                
+                <div class="bg-white p-4 rounded-lg shadow-sm">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-semibold text-gray-600">Último Backup</span>
+                        <i class="fas fa-clock text-emerald-500"></i>
+                    </div>
+                    <div class="text-lg font-bold text-gray-800" id="ultimo-backup">--</div>
+                </div>
+                
+                <div class="bg-white p-4 rounded-lg shadow-sm">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-semibold text-gray-600">Espaço Total</span>
+                        <i class="fas fa-hdd text-emerald-500"></i>
+                    </div>
+                    <div class="text-xl font-bold text-gray-800" id="espaco-backups">-- MB</div>
+                </div>
+            </div>
+
+            <div class="flex gap-4 mb-6">
+                <button id="btn-criar-backup" class="flex-1 bg-emerald-500 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-emerald-600 transition-all transform hover:scale-105">
+                    <i class="fas fa-save mr-2"></i> CRIAR BACKUP AGORA
+                </button>
+                
+                <button id="btn-listar-backups" class="flex-1 bg-teal-500 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-teal-600 transition-all transform hover:scale-105">
+                    <i class="fas fa-list mr-2"></i> VER BACKUPS
+                </button>
+            </div>
+
+            <div id="lista-backups" class="hidden bg-white rounded-lg shadow-sm p-4 max-h-96 overflow-y-auto">
+                <h3 class="font-bold text-lg mb-3 flex items-center justify-between">
+                    <span><i class="fas fa-history mr-2"></i>Histórico de Backups</span>
+                    <button id="btn-fechar-lista" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </h3>
+                <div id="backups-content">
+                    <div class="text-center py-8">
+                        <div class="spinner mx-auto mb-4"></div>
+                        <p class="text-gray-400">Carregando backups...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4 p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded">
+                <div class="flex items-start">
+                    <i class="fas fa-exclamation-triangle text-yellow-600 mt-1 mr-3"></i>
+                    <div class="text-sm">
+                        <p class="font-bold text-yellow-800 mb-1">Importante sobre Backups:</p>
+                        <ul class="text-yellow-700 space-y-1 list-disc list-inside">
+                            <li>Backups automáticos a cada 1 hora</li>
+                            <li>Últimos 48 backups mantidos (2 dias)</li>
+                            <li>Backups antigos removidos automaticamente</li>
+                            <li>Recomendado: baixar backups importantes</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Seção de Configurações de Timeout -->
+        <section class="mb-8 p-6 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg shadow-md border-2 border-indigo-200">
+            <h2 class="text-3xl font-bold text-gray-800 mb-4 flex items-center">
+                <i class="fas fa-cog text-indigo-500 mr-3"></i>
+                Configurações de Timeout
+            </h2>
+            <p class="text-gray-600 mb-6 text-sm">
+                <i class="fas fa-info-circle mr-1"></i>
+                Ajuste os tempos de inatividade para cada tela do totem.
+            </p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-white p-4 rounded-lg shadow-sm">
+                    <label class="block font-bold text-gray-700 mb-2"><i class="fas fa-clock text-blue-500 mr-2"></i>Tela de Escolha</label>
+                    <div class="flex items-center gap-3">
+                        <input type="number" id="config-timeout-pagina2" min="10" max="600" class="flex-grow p-3 border rounded-md focus:ring-2 focus:ring-indigo-500" placeholder="30">
+                        <span class="text-gray-600 font-semibold">seg</span>
+                    </div>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-sm">
+                    <label class="block font-bold text-gray-700 mb-2"><i class="fas fa-clock text-green-500 mr-2"></i>Totem</label>
+                    <div class="flex items-center gap-3">
+                        <input type="number" id="config-timeout-totem" min="10" max="600" class="flex-grow p-3 border rounded-md focus:ring-2 focus:ring-indigo-500" placeholder="120">
+                        <span class="text-gray-600 font-semibold">seg</span>
+                    </div>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-sm">
+                    <label class="block font-bold text-gray-700 mb-2"><i class="fas fa-clock text-yellow-500 mr-2"></i>Tela de Nome</label>
+                    <div class="flex items-center gap-3">
+                        <input type="number" id="config-timeout-nome" min="10" max="600" class="flex-grow p-3 border rounded-md focus:ring-2 focus:ring-indigo-500" placeholder="60">
+                        <span class="text-gray-600 font-semibold">seg</span>
+                    </div>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-sm">
+                    <label class="block font-bold text-gray-700 mb-2"><i class="fas fa-eye text-orange-500 mr-2"></i>Mostrar Timer</label>
+                    <div class="flex items-center gap-3">
+                        <input type="number" id="config-mostrar-timer-apos" min="10" max="120" class="flex-grow p-3 border rounded-md focus:ring-2 focus:ring-indigo-500" placeholder="30">
+                        <span class="text-gray-600 font-semibold">seg</span>
+                    </div>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-sm">
+                    <label class="block font-bold text-gray-700 mb-2"><i class="fas fa-gift text-purple-500 mr-2"></i>Acompanhamentos Inclusos</label>
+                    <div class="flex items-center gap-3">
+                        <input type="number" id="config-limite-inclusos" min="1" max="10" class="flex-grow p-3 border rounded-md focus:ring-2 focus:ring-indigo-500" placeholder="3">
+                        <span class="text-gray-600 font-semibold">itens</span>
+                    </div>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-sm">
+                    <label class="block font-bold text-gray-700 mb-2"><i class="fas fa-plus-circle text-teal-500 mr-2"></i>Limite de Adicionais</label>
+                    <div class="flex items-center gap-3">
+                        <input type="number" id="config-limite-adicionais" min="1" max="50" class="flex-grow p-3 border rounded-md focus:ring-2 focus:ring-indigo-500" placeholder="10">
+                        <span class="text-gray-600 font-semibold">cada</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-6 text-center">
+                <button id="btn-salvar-config" class="bg-indigo-500 text-white font-bold py-3 px-8 rounded-lg shadow-lg hover:bg-indigo-600 transition-all transform hover:scale-105">
+                    <i class="fas fa-save mr-2"></i> SALVAR CONFIGURAÇÕES
+                </button>
+            </div>
+        </section>
+    </div>
+
+<script>
+    const API_URL = '/api/dados', CONFIG_API_URL = '/api/config';
+    const CONFIG = { MAX_FILE_SIZE: 5 * 1024 * 1024, ALLOWED_IMAGE_TYPES: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], TOAST_DURATION: 3000 };
+    
+    let menu = {}, adicional_categorias = [], hasUnsavedChanges = false, configuracoes = {};
+    const elements = {
+        adicionaisPanel: document.getElementById('adicionais-panel'),
+        adminPanel: document.getElementById('admin-panel'),
+        saveButton: document.getElementById('save-all-changes'),
+        editModal: document.getElementById('edit-product-modal'),
+        loading: document.getElementById('loading-overlay'),
+        loadingText: document.getElementById('loading-text'),
+        toast: document.getElementById('toast'),
+        toastMessage: document.getElementById('toast-message'),
+        btnSalvarConfig: document.getElementById('btn-salvar-config')
+    };
+
+    const mostrarLoading = (msg = 'Processando...') => { elements.loadingText.textContent = msg; elements.loading.classList.remove('hidden'); };
+    const esconderLoading = () => elements.loading.classList.add('hidden');
+    const mostrarToast = (msg, tipo = 'success') => {
+        elements.toastMessage.textContent = msg;
+        elements.toast.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-2xl font-bold text-lg z-50 ${tipo === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white`;
+        elements.toast.classList.remove('hidden');
+        elements.toast.style.transform = 'translateX(0)';
+        setTimeout(() => { elements.toast.style.transform = 'translateX(400px)'; setTimeout(() => elements.toast.classList.add('hidden'), 300); }, CONFIG.TOAST_DURATION);
+    };
+    const validarImagem = (file) => {
+        if (!file) return true;
+        if (!CONFIG.ALLOWED_IMAGE_TYPES.includes(file.type)) { mostrarToast('Formato inválido.', 'error'); return false; }
+        if (file.size > CONFIG.MAX_FILE_SIZE) { mostrarToast('Imagem muito grande.', 'error'); return false; }
+        return true;
+    };
+    const marcarAlteracoes = () => { hasUnsavedChanges = true; elements.saveButton.classList.add('animate-pulse'); };
+    const limparAlteracoes = () => { hasUnsavedChanges = false; elements.saveButton.classList.remove('animate-pulse'); };
+    window.addEventListener('beforeunload', (e) => { if (hasUnsavedChanges) { e.preventDefault(); e.returnValue = ''; } });
+
+    // Configurações - ✅ CORRIGIDO
+    async function carregarConfiguracoes() {
+        try {
+            const response = await fetch(CONFIG_API_URL);
+            if (!response.ok) throw new Error('Erro');
+            configuracoes = await response.json();
+            document.getElementById('config-timeout-pagina2').value = configuracoes.timeout_pagina2?.valor || 30;
+            document.getElementById('config-timeout-totem').value = configuracoes.timeout_totem?.valor || 120;
+            document.getElementById('config-timeout-nome').value = configuracoes.timeout_nome?.valor || 60;
+            document.getElementById('config-mostrar-timer-apos').value = configuracoes.mostrar_timer_apos?.valor || 30;
+            // ✅ ADICIONADO: Carrega os limites de inclusos e adicionais
+            document.getElementById('config-limite-inclusos').value = configuracoes.limite_inclusos?.valor || 3;
+            document.getElementById('config-limite-adicionais').value = configuracoes.limite_adicionais?.valor || 10;
+        } catch (error) {
+            mostrarToast('Erro ao carregar configurações', 'error');
+        }
+    }
+
+    async function salvarConfiguracoes() {
+        const configs = {
+            timeout_pagina2: document.getElementById('config-timeout-pagina2').value,
+            timeout_totem: document.getElementById('config-timeout-totem').value,
+            timeout_nome: document.getElementById('config-timeout-nome').value,
+            mostrar_timer_apos: document.getElementById('config-mostrar-timer-apos').value,
+            // ✅ ADICIONADO: Inclui os limites de inclusos e adicionais
+            limite_inclusos: document.getElementById('config-limite-inclusos').value,
+            limite_adicionais: document.getElementById('config-limite-adicionais').value
+        };
+
+        // Validação dos timeouts
+        for (const [k, v] of Object.entries(configs)) {
+            const val = parseInt(v);
+            if (isNaN(val)) {
+                mostrarToast(`Valor inválido para ${k}.`, 'error');
+                return;
+            }
+            
+            // Validação específica para timeouts
+            if (k.startsWith('timeout_') || k === 'mostrar_timer_apos') {
+                if (val < 10 || val > 600) {
+                    mostrarToast(`${k} deve estar entre 10 e 600 segundos.`, 'error');
+                    return;
+                }
+            }
+            
+            // Validação específica para limites
+            if (k === 'limite_inclusos' && (val < 1 || val > 10)) {
+                mostrarToast('Limite de inclusos deve estar entre 1 e 10.', 'error');
+                return;
+            }
+            if (k === 'limite_adicionais' && (val < 1 || val > 50)) {
+                mostrarToast('Limite de adicionais deve estar entre 1 e 50.', 'error');
+                return;
+            }
+        }
+
+        elements.btnSalvarConfig.disabled = true;
+        mostrarLoading('Salvando configurações...');
+
+        try {
+            const response = await fetch(CONFIG_API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(configs)
+            });
+            if (!response.ok) throw new Error((await response.json()).message || 'Erro');
+            mostrarToast('✅ Configurações salvas!', 'success');
+            await carregarConfiguracoes();
+        } catch (error) {
+            mostrarToast('❌ Erro: ' + error.message, 'error');
+        } finally {
+            elements.btnSalvarConfig.disabled = false;
+            esconderLoading();
+        }
+    }
+
+    elements.btnSalvarConfig.addEventListener('click', salvarConfiguracoes);
+
+    // Backup
+    async function carregarInfoBackups() {
+        try {
+            const response = await fetch('/api/backup/listar');
+            if (!response.ok) throw new Error('Erro');
+            const backups = await response.json();
+            document.getElementById('total-backups').textContent = backups.length;
+            if (backups.length > 0) {
+                document.getElementById('ultimo-backup').textContent = backups[0].data.split(' ')[1].substring(0, 5);
+                const espacoTotal = backups.reduce((acc, b) => acc + b.tamanho_mb, 0);
+                document.getElementById('espaco-backups').textContent = `${espacoTotal.toFixed(1)} MB`;
+            } else {
+                document.getElementById('ultimo-backup').textContent = 'Nenhum';
+                document.getElementById('espaco-backups').textContent = '0 MB';
+            }
+            return backups;
+        } catch (error) {
+            mostrarToast('Erro ao carregar backups', 'error');
+            return [];
+        }
+    }
+
+    async function criarBackup() {
+        const btn = document.getElementById('btn-criar-backup');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> CRIANDO...';
+        try {
+            const response = await fetch('/api/backup/manual', { method: 'POST' });
+            const data = await response.json();
+            if (response.ok) {
+                mostrarToast('✅ Backup criado!', 'success');
+                await carregarInfoBackups();
+            } else {
+                throw new Error(data.message);
+            }
+        } catch (error) {
+            mostrarToast('❌ Erro: ' + error.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-save mr-2"></i> CRIAR BACKUP AGORA';
+        }
+    }
+
+    async function listarBackups() {
+        const listaDiv = document.getElementById('lista-backups');
+        const contentDiv = document.getElementById('backups-content');
+        listaDiv.classList.remove('hidden');
+        contentDiv.innerHTML = '<div class="text-center py-8"><div class="spinner mx-auto mb-4"></div><p class="text-gray-400">Carregando...</p></div>';
+        try {
+            const backups = await carregarInfoBackups();
+            if (backups.length === 0) {
+                contentDiv.innerHTML = '<p class="text-gray-400 text-center py-8">Nenhum backup disponível</p>';
+                return;
+            }
+            let html = '<div class="space-y-2">';
+            backups.forEach((backup) => {
+                const tipo = backup.arquivo.includes('menu') ? '📋 Menu' : backup.arquivo.includes('pedidos') ? '🧾 Pedidos' : '⚙️ Config';
+                html += `
+                    <div class="flex items-center justify-between p-3 border rounded hover:bg-gray-50 transition-colors">
+                        <div class="flex-1">
+                            <div class="font-semibold text-gray-800">${tipo}</div>
+                            <div class="text-xs text-gray-500">${backup.data}</div>
+                        </div>
+                        <div class="text-sm text-gray-600 mr-4">${backup.tamanho_mb} MB</div>
+                        <a href="/api/backup/download/${backup.arquivo}" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm" download>
+                            <i class="fas fa-download mr-1"></i> Baixar
+                        </a>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            contentDiv.innerHTML = html;
+        } catch (error) {
+            contentDiv.innerHTML = '<p class="text-red-500 text-center py-8">Erro</p>';
+        }
+    }
+
+    document.getElementById('btn-criar-backup').addEventListener('click', criarBackup);
+    document.getElementById('btn-listar-backups').addEventListener('click', listarBackups);
+    document.getElementById('btn-fechar-lista').addEventListener('click', () => {
+        document.getElementById('lista-backups').classList.add('hidden');
+    });
+
+    // Renderização de Adicionais com estoque editável
+    function renderAdicionaisPanel() {
+        elements.adicionaisPanel.innerHTML = adicional_categorias.length === 0 
+            ? '<div class="text-center py-8"><i class="fas fa-inbox text-gray-300 text-5xl mb-3"></i><p class="text-gray-500 italic">Nenhuma categoria criada</p></div>'
+            : '';
+        
+        adicional_categorias.forEach(adCat => {
+            const section = document.createElement('div');
+            section.className = 'p-4 border rounded-lg bg-gray-50 hover:shadow-md transition-shadow';
+            
+            let itensHtml = '<div class="space-y-2 mt-3">';
+            if (adCat.itens.length === 0) {
+                itensHtml += '<p class="text-gray-400 text-sm italic">Nenhum item</p>';
+            } else {
+                adCat.itens.forEach(item => {
+                    const estoqueClass = item.estoque === 0 ? 'estoque-zero' : (item.estoque <= 5 ? 'estoque-baixo' : '');
+                    itensHtml += `
+                        <div class="flex justify-between items-center text-sm p-2 bg-white rounded hover:bg-gray-50 transition-colors ${estoqueClass}">
+                            <span><strong>${item.nome}</strong> - R$ ${item.preco.toFixed(2)}</span>
+                            <div class="flex items-center gap-2">
+                                <label class="text-xs text-gray-600">Estoque:</label>
+                                <input type="number" min="0" value="${item.estoque}" 
+                                       class="estoque-input estoque-adicional" 
+                                       data-cat-id="${adCat.id}" 
+                                       data-item-id="${item.id}">
+                                <button class="btn-delete btn-delete-adicional-item text-red-400 hover:text-red-600 p-1" data-cat-id="${adCat.id}" data-item-id="${item.id}">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            itensHtml += '</div>';
+
+            section.innerHTML = `
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-xl font-bold text-gray-700 flex items-center">
+                        <i class="fas fa-folder text-purple-500 mr-2"></i>${adCat.nome}
+                        <span class="ml-2 text-sm font-normal text-gray-500">(${adCat.itens.length} ${adCat.itens.length === 1 ? 'item' : 'itens'})</span>
+                    </h3>
+                    <button class="btn-delete btn-delete-adicional-category text-red-500 hover:text-red-700 font-semibold" data-cat-id="${adCat.id}">
+                        <i class="fas fa-trash-alt mr-1"></i>Excluir
+                    </button>
+                </div>
+                ${itensHtml}
+                <form class="form-add-adicional-item mt-3 flex gap-2 border-t pt-3">
+                    <input type="text" placeholder="Nome" class="form-nome flex-grow p-2 border rounded-md text-sm" required minlength="2" maxlength="50">
+                    <input type="number" step="0.01" min="0" placeholder="Preço" class="form-preco p-2 border rounded-md w-24 text-sm" required>
+                    <input type="number" min="0" placeholder="Estoque" class="form-estoque p-2 border rounded-md w-24 text-sm" required>
+                    <button type="submit" data-cat-id="${adCat.id}" class="bg-purple-600 text-white font-bold py-2 px-4 rounded-md text-sm hover:bg-purple-700">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </form>
+            `;
+            elements.adicionaisPanel.appendChild(section);
+        });
+
+        // Event listener para mudança de estoque em adicionais
+        document.querySelectorAll('.estoque-adicional').forEach(input => {
+            input.addEventListener('change', (e) => {
+                const catId = e.target.dataset.catId;
+                const itemId = e.target.dataset.itemId;
+                const novoEstoque = parseInt(e.target.value) || 0;
+                
+                const cat = adicional_categorias.find(c => String(c.id) === String(catId));
+                if (cat) {
+                    const item = cat.itens.find(i => String(i.id) === String(itemId));
+                    if (item) {
+                        item.estoque = novoEstoque;
+                        marcarAlteracoes();
+                        renderAdicionaisPanel();
+                    }
+                }
+            });
+        });
+    }
+
+    // Renderização de Produtos com estoque editável
+    function renderAdminPanel() {
+        elements.adminPanel.innerHTML = Object.keys(menu).length === 0 
+            ? '<div class="text-center py-12"><i class="fas fa-inbox text-gray-300 text-6xl mb-4"></i><p class="text-gray-500 text-lg">Nenhuma categoria criada</p></div>'
+            : '';
+        
+        Object.keys(menu).forEach(categoria => {
+            const section = document.createElement('section');
+            section.className = 'bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow';
+            
+            section.innerHTML = `
+                <div class="flex justify-between items-center mb-4 border-b pb-3">
+                    <h2 class="text-2xl font-bold text-gray-700 flex items-center">
+                        <i class="fas fa-list text-blue-500 mr-2"></i>${categoria}
+                        <span class="ml-2 text-sm font-normal text-gray-500">(${menu[categoria].length} ${menu[categoria].length === 1 ? 'produto' : 'produtos'})</span>
+                    </h2>
+                    <button class="btn-delete btn-delete-category text-red-500 hover:text-red-700 font-semibold" data-categoria="${categoria}">
+                        <i class="fas fa-trash-alt mr-1"></i>Excluir
+                    </button>
+                </div>
+            `;
+
+            const itemListDiv = document.createElement('div');
+            itemListDiv.className = 'space-y-3';
+            
+            if (menu[categoria].length === 0) {
+                itemListDiv.innerHTML = '<p class="text-gray-400 italic text-center py-4">Nenhum produto</p>';
+            } else {
+                menu[categoria].forEach(item => {
+                    const itemDiv = document.createElement('div');
+                    const estoqueClass = item.estoque === 0 ? 'estoque-zero' : (item.estoque <= 5 ? 'estoque-baixo' : '');
+                    itemDiv.className = `item-container p-3 bg-gray-50 rounded-md hover:bg-gray-100 transition-colors ${estoqueClass}`;
+                    
+                    const imagePreview = item.imagem_path 
+                        ? `<img src="/${item.imagem_path}" alt="${item.nome}" class="w-20 h-20 object-cover rounded-md mr-4 image-preview shadow-md">` 
+                        : `<div class="w-20 h-20 bg-gray-200 flex items-center justify-center rounded-md mr-4 shadow-sm"><i class="fas fa-image text-2xl text-gray-400"></i></div>`;
+                    
+                    let linkedCatsHtml = '<p class="text-xs text-gray-500 mt-1"><i class="fas fa-link mr-1"></i>Adicionais: <span class="italic">Nenhum</span></p>';
+                    if(item.linked_adicional_categorias_ids?.length > 0) {
+                        const names = item.linked_adicional_categorias_ids
+                            .map(id => adicional_categorias.find(c => String(c.id) === String(id))?.nome)
+                            .filter(Boolean);
+                        if (names.length > 0) {
+                            linkedCatsHtml = `<p class="text-xs text-gray-500 mt-1"><i class="fas fa-link mr-1"></i>Adicionais: <b class="text-purple-600">${names.join(', ')}</b></p>`;
+                        }
+                    }
+                    
+                    itemDiv.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <div class="flex items-center flex-grow">
+                                ${imagePreview}
+                                <div class="flex-grow">
+                                    <span class="font-semibold text-lg">${item.nome}</span>
+                                    <span class="text-gray-600 ml-2 font-bold">R$ ${item.preco.toFixed(2)}</span>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <label class="text-xs text-gray-600">Estoque:</label>
+                                        <input type="number" min="0" value="${item.estoque || 0}" 
+                                               class="estoque-input estoque-produto" 
+                                               data-categoria="${categoria}" 
+                                               data-item-id="${item.id}">
+                                    </div>
+                                    ${linkedCatsHtml}
+                                </div>
+                            </div>
+                            <div class="flex gap-2">
+                                <button class="btn-edit-item text-blue-500 hover:text-blue-700 p-2" data-categoria="${categoria}" data-item-id="${item.id}">
+                                    <i class="fas fa-edit text-xl"></i>
+                                </button>
+                                <button class="btn-delete btn-delete-item text-red-500 hover:text-red-700 p-2" data-categoria="${categoria}" data-item-id="${item.id}">
+                                    <i class="fas fa-trash text-xl"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    itemListDiv.appendChild(itemDiv);
+                });
+            }
+            
+            section.appendChild(itemListDiv);
+            
+            const form = document.createElement('form');
+            form.className = 'form-add-item mt-6 p-4 bg-blue-50 rounded-lg border-2 border-dashed border-blue-200';
+            form.innerHTML = `
+                <h3 class="font-bold mb-3 text-gray-700"><i class="fas fa-plus-circle text-blue-500 mr-2"></i>Adicionar em "${categoria}"</h3>
+                <div class="flex flex-wrap gap-4 items-center">
+                    <input type="text" placeholder="Nome" class="form-nome flex-grow p-3 border rounded-md" required minlength="2" maxlength="100">
+                    <input type="number" step="0.01" min="0" placeholder="Preço" class="form-preco p-3 border rounded-md w-32" required>
+                    <input type="number" min="0" placeholder="Estoque" class="form-estoque p-3 border rounded-md w-32" required>
+                    <input type="file" class="form-imagem p-2 border rounded-md w-full sm:w-auto" accept="image/*">
+                    <button type="submit" data-categoria="${categoria}" class="bg-green-500 text-white font-bold py-3 px-6 rounded-md hover:bg-green-600 transition-all transform hover:scale-105">
+                        <i class="fas fa-plus-circle mr-2"></i>Adicionar
+                    </button>
+                </div>
+            `;
+            section.appendChild(form);
+            elements.adminPanel.appendChild(section);
+        });
+
+        // Event listener para mudança de estoque em produtos
+        document.querySelectorAll('.estoque-produto').forEach(input => {
+            input.addEventListener('change', (e) => {
+                const categoria = e.target.dataset.categoria;
+                const itemId = e.target.dataset.itemId;
+                const novoEstoque = parseInt(e.target.value) || 0;
+                
+                const item = menu[categoria]?.find(i => String(i.id) === String(itemId));
+                if (item) {
+                    item.estoque = novoEstoque;
+                    marcarAlteracoes();
+                    renderAdminPanel();
+                }
+            });
+        });
+    }
+
+    // Carregamento e Salvamento
+    async function carregarDados() {
+        mostrarLoading('Carregando cardápio...');
+        try {
+            const response = await fetch(API_URL);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            menu = data.menu || {};
+            adicional_categorias = data.adicional_categorias || [];
+            renderAdicionaisPanel();
+            renderAdminPanel();
+            limparAlteracoes();
+            mostrarToast('Dados carregados!', 'success');
+        } catch (error) {
+            console.error('Erro:', error);
+            mostrarToast('Erro ao carregar dados', 'error');
+        } finally {
+            esconderLoading();
+        }
+    }
+
+    async function salvarAlteracoes() {
+        if (!hasUnsavedChanges && !confirm('Salvar mesmo sem alterações?')) return;
+        
+        elements.saveButton.disabled = true;
+        mostrarLoading('Salvando...');
+        
+        const formData = new FormData();
+        formData.append('menuData', JSON.stringify({ menu, adicional_categorias }));
+        
+        document.querySelectorAll('input[type="file"]').forEach(input => {
+            if (input.files.length > 0 && input.dataset.fileKey && validarImagem(input.files[0])) {
+                formData.append(input.dataset.fileKey, input.files[0]);
+            }
+        });
+        
+        try {
+            const response = await fetch(API_URL, { method: 'POST', body: formData });
+            if (!response.ok) throw new Error(await response.text() || 'Erro');
+            mostrarToast('✅ Cardápio salvo!', 'success');
+            limparAlteracoes();
+            setTimeout(() => carregarDados(), 1000);
+        } catch (error) {
+            mostrarToast('❌ Erro: ' + error.message, 'error');
+        } finally {
+            elements.saveButton.disabled = false;
+            esconderLoading();
+        }
+    }
+    
+    elements.saveButton.addEventListener('click', salvarAlteracoes);
+
+    // Event Listeners - Adicionais
+    document.getElementById('form-add-adicional-category').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const input = document.getElementById('new-adicional-category-name');
+        const nome = input.value.trim();
+        if (!nome) { mostrarToast('Digite um nome', 'error'); return; }
+        if (adicional_categorias.some(cat => cat.nome.toLowerCase() === nome.toLowerCase())) {
+            mostrarToast('Categoria já existe', 'error'); return;
+        }
+        adicional_categorias.push({ id: `temp_${Date.now()}`, nome, itens: [] });
+        input.value = '';
+        renderAdicionaisPanel();
+        marcarAlteracoes();
+        mostrarToast(`"${nome}" criada!`, 'success');
+    });
+
+    elements.adicionaisPanel.addEventListener('click', (e) => {
+        const button = e.target.closest('button');
+        if (!button) return;
+        
+        if (button.classList.contains('btn-delete-adicional-category')) {
+            const catId = button.dataset.catId;
+            const cat = adicional_categorias.find(c => String(c.id) === String(catId));
+            if (!cat) return;
+            if (confirm(`Remover "${cat.nome}"?`)) {
+                adicional_categorias = adicional_categorias.filter(c => String(c.id) !== String(catId));
+                renderAdicionaisPanel();
+                renderAdminPanel();
+                marcarAlteracoes();
+                mostrarToast(`"${cat.nome}" removida`, 'success');
+            }
+        } else if (button.classList.contains('btn-delete-adicional-item')) {
+            const catId = button.dataset.catId;
+            const itemId = button.dataset.itemId;
+            const cat = adicional_categorias.find(c => String(c.id) === String(catId));
+            if (!cat) return;
+            const item = cat.itens.find(i => String(i.id) === String(itemId));
+            if (item && confirm(`Remover "${item.nome}"?`)) {
+                cat.itens = cat.itens.filter(i => String(i.id) !== String(itemId));
+                renderAdicionaisPanel();
+                marcarAlteracoes();
+                mostrarToast(`"${item.nome}" removido`, 'success');
+            }
+        }
+    });
+
+    elements.adicionaisPanel.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const form = e.target;
+        if (form.classList.contains('form-add-adicional-item')) {
+            const catId = e.submitter.dataset.catId;
+            const nome = form.querySelector('.form-nome').value.trim();
+            const preco = parseFloat(form.querySelector('.form-preco').value);
+            const estoque = parseInt(form.querySelector('.form-estoque').value);
+            
+            if (!nome || isNaN(preco) || preco < 0 || isNaN(estoque) || estoque < 0) {
+                mostrarToast('Preencha todos os campos', 'error'); return;
+            }
+            
+            const cat = adicional_categorias.find(c => String(c.id) === String(catId));
+            if (!cat) return;
+            if (cat.itens.some(item => item.nome.toLowerCase() === nome.toLowerCase())) {
+                mostrarToast('Item já existe', 'error'); return;
+            }
+            
+            cat.itens.push({ id: `temp_${Date.now()}`, nome, preco, estoque });
+            form.reset();
+            renderAdicionaisPanel();
+            marcarAlteracoes();
+            mostrarToast(`"${nome}" adicionado!`, 'success');
+        }
+    });
+    
+    // Event Listeners - Menu Principal
+    document.getElementById('form-add-category').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const input = document.getElementById('new-category-name');
+        const nome = input.value.trim();
+        if (!nome) { mostrarToast('Digite um nome', 'error'); return; }
+        if (menu[nome]) { mostrarToast('Categoria já existe', 'error'); return; }
+        menu[nome] = [];
+        input.value = '';
+        renderAdminPanel();
+        marcarAlteracoes();
+        mostrarToast(`"${nome}" criada!`, 'success');
+        setTimeout(() => elements.adminPanel.lastElementChild?.scrollIntoView({ behavior: 'smooth' }), 100);
+    });
+
+    elements.adminPanel.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const form = e.target;
+        if (form.classList.contains('form-add-item')) {
+            const categoria = e.submitter.dataset.categoria;
+            const nome = form.querySelector('.form-nome').value.trim();
+            const preco = parseFloat(form.querySelector('.form-preco').value);
+            const estoque = parseInt(form.querySelector('.form-estoque').value);
+            const imagemInput = form.querySelector('.form-imagem');
+            
+            if (!nome || isNaN(preco) || preco < 0 || isNaN(estoque) || estoque < 0) {
+                mostrarToast('Preencha todos os campos', 'error'); return;
+            }
+            if (imagemInput.files[0] && !validarImagem(imagemInput.files[0])) return;
+            if (menu[categoria].some(item => item.nome.toLowerCase() === nome.toLowerCase())) {
+                mostrarToast('Produto já existe', 'error'); return;
+            }
+            
+            const itemId = `temp_${Date.now()}`;
+            imagemInput.dataset.fileKey = `file_produto_${itemId}`;
+            menu[categoria].push({ id: itemId, nome, preco, estoque, imagem_path: null, linked_adicional_categorias_ids: [] });
+            form.reset();
+            renderAdminPanel();
+            marcarAlteracoes();
+            mostrarToast(`"${nome}" adicionado!`, 'success');
+        }
+    });
+
+    elements.adminPanel.addEventListener('click', (e) => {
+        const button = e.target.closest('button');
+        if (!button) return;
+        
+        const categoria = button.dataset.categoria;
+        const itemId = button.dataset.itemId;
+        
+        if (button.classList.contains('btn-delete-category')) {
+            const total = menu[categoria]?.length || 0;
+            if (confirm(`Remover "${categoria}" e seus ${total} produtos?`)) {
+                delete menu[categoria];
+                renderAdminPanel();
+                marcarAlteracoes();
+                mostrarToast(`"${categoria}" removida`, 'success');
+            }
+        } else if (button.classList.contains('btn-delete-item')) {
+            const item = menu[categoria]?.find(i => String(i.id) === String(itemId));
+            if (item && confirm(`Remover "${item.nome}"?`)) {
+                menu[categoria] = menu[categoria].filter(i => String(i.id) !== String(itemId));
+                renderAdminPanel();
+                marcarAlteracoes();
+                mostrarToast(`"${item.nome}" removido`, 'success');
+            }
+        } else if (button.classList.contains('btn-edit-item')) {
+            const item = menu[categoria]?.find(i => String(i.id) === String(itemId));
+            if (item) openEditModal(item, categoria);
+        }
+    });
+
+    // Modal de Edição
+    function openEditModal(item, categoria) {
+        document.getElementById('modal-edit-nome').value = item.nome;
+        document.getElementById('modal-edit-preco').value = item.preco.toFixed(2);
+        
+        const imageInput = document.getElementById('modal-edit-imagem');
+        imageInput.value = '';
+        imageInput.dataset.fileKey = `file_produto_${item.id}`;
+        
+        const currentImageDiv = document.getElementById('modal-current-image');
+        currentImageDiv.innerHTML = item.imagem_path 
+            ? `<div class="flex items-center gap-2 p-2 bg-gray-100 rounded"><img src="/${item.imagem_path}" alt="${item.nome}" class="w-16 h-16 object-cover rounded"><span class="text-sm text-gray-600">Imagem atual</span></div>`
+            : '<p class="text-sm text-gray-500 italic">Nenhuma imagem</p>';
+        
+        imageInput.addEventListener('change', function() {
+            if (this.files[0]) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    currentImageDiv.innerHTML = `<div class="flex items-center gap-2 p-2 bg-blue-50 border-2 border-blue-200 rounded"><img src="${e.target.result}" alt="Preview" class="w-16 h-16 object-cover rounded"><span class="text-sm text-blue-600 font-semibold">Nova imagem</span></div>`;
+                };
+                reader.readAsDataURL(this.files[0]);
+            }
+        });
+        
+        const linksContainer = document.getElementById('modal-edit-adicionais-links');
+        linksContainer.innerHTML = '<label class="block font-bold text-gray-700 mb-3"><i class="fas fa-link mr-1"></i>Vincular Adicionais</label><p class="text-sm text-gray-500 mb-3">Selecione categorias disponíveis.</p>';
+        
+        if (adicional_categorias.length === 0) {
+            linksContainer.innerHTML += '<p class="text-gray-400 italic">Nenhuma categoria disponível</p>';
+        } else {
+            adicional_categorias.forEach(cat => {
+                const isChecked = item.linked_adicional_categorias_ids.some(id => String(id) === String(cat.id));
+                linksContainer.innerHTML += `
+                    <div class="flex items-center p-2 hover:bg-gray-50 rounded">
+                        <input type="checkbox" id="link-${cat.id}" value="${cat.id}" class="mr-3 w-4 h-4" ${isChecked ? 'checked' : ''}>
+                        <label for="link-${cat.id}" class="cursor-pointer flex-grow">${cat.nome} <span class="text-xs text-gray-500">(${cat.itens.length} ${cat.itens.length === 1 ? 'item' : 'itens'})</span></label>
+                    </div>
+                `;
+            });
+        }
+
+        document.getElementById('modal-edit-save').onclick = () => saveModalChanges(item, categoria);
+        elements.editModal.classList.remove('hidden');
+    }
+
+    function saveModalChanges(item, categoria) {
+        const novoNome = document.getElementById('modal-edit-nome').value.trim();
+        const novoPreco = parseFloat(document.getElementById('modal-edit-preco').value);
+        
+        if (!novoNome || isNaN(novoPreco) || novoPreco < 0) {
+            mostrarToast('Preencha todos os campos', 'error'); return;
+        }
+        
+        const duplicado = menu[categoria].some(p => p.nome.toLowerCase() === novoNome.toLowerCase() && String(p.id) !== String(item.id));
+        if (duplicado) { mostrarToast('Produto já existe', 'error'); return; }
+        
+        const imagemInput = document.getElementById('modal-edit-imagem');
+        if (imagemInput.files[0] && !validarImagem(imagemInput.files[0])) return;
+        
+        item.nome = novoNome;
+        item.preco = novoPreco;
+        
+        const selectedIds = [];
+        document.querySelectorAll('#modal-edit-adicionais-links input[type="checkbox"]:checked').forEach(cb => selectedIds.push(cb.value));
+        item.linked_adicional_categorias_ids = selectedIds;
+        
+        closeEditModal();
+        renderAdminPanel();
+        marcarAlteracoes();
+        mostrarToast(`"${novoNome}" atualizado!`, 'success');
+    }
+
+    function closeEditModal() { elements.editModal.classList.add('hidden'); }
+    
+    document.getElementById('modal-edit-cancel').addEventListener('click', closeEditModal);
+    document.getElementById('modal-edit-cancel-2').addEventListener('click', closeEditModal);
+    elements.editModal.addEventListener('click', (e) => { if (e.target === elements.editModal) closeEditModal(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !elements.editModal.classList.contains('hidden')) closeEditModal(); });
+
+    // Inicialização
+    carregarDados();
+    carregarConfiguracoes();
+    carregarInfoBackups();
+    setInterval(carregarInfoBackups, 300000);
+    
+    console.log('🍦 Admin completo iniciado!');
+</script>
+</body>
+</html>
